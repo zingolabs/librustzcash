@@ -14,7 +14,7 @@ use crate::transaction::{
         hash_transparent_txid_data, to_hash, transparent_outputs_hash, transparent_prevout_hash,
         transparent_sequence_hash, ZCASH_TRANSPARENT_HASH_PERSONALIZATION,
     },
-    Authorization, TransactionData, TransparentDigests, TxDigests,
+    Authorization, TransactionData, TransparentDigests, TxDigests, TxDigestsCtx
 };
 
 #[cfg(feature = "zfuture")]
@@ -39,8 +39,8 @@ fn hasher(personal: &[u8; 16]) -> State {
 
 /// Implements [ZIP 244 section S.2](https://zips.z.cash/zip-0244#s-2-transparent-sig-digest)
 /// but only when used to produce the hash for a signature over a transparent input.
-fn transparent_sig_digest<A: TransparentAuthorizingContext>(
-    txid_digests: &TransparentDigests<Blake2bHash>,
+fn transparent_sig_digest<A: transparent::Authorization, TA: TransparentAuthorizingContext, Ctx: TxDigestsCtx<TransparentCtx = TA>>(
+    txid_digests: &TransparentDigests<Ctx>,
     bundle: &transparent::Bundle<A>,
     input: &SignableInput<'_>,
 ) -> Blake2bHash {
@@ -58,7 +58,7 @@ fn transparent_sig_digest<A: TransparentAuthorizingContext>(
     let amounts_digest = {
         let mut h = hasher(ZCASH_TRANSPARENT_AMOUNTS_HASH_PERSONALIZATION);
         if !flag_anyonecanpay {
-            Array::write(&mut h, bundle.authorization.input_amounts(), |w, amount| {
+            Array::write(&mut h, txid_digests.signing_context.input_amounts(), |w, amount| {
                 w.write_all(&amount.to_i64_le_bytes())
             })
             .unwrap();
@@ -71,7 +71,7 @@ fn transparent_sig_digest<A: TransparentAuthorizingContext>(
         if !flag_anyonecanpay {
             Array::write(
                 &mut h,
-                bundle.authorization.input_scriptpubkeys(),
+                txid_digests.signing_context.input_scriptpubkeys(),
                 |w, script| script.write(w),
             )
             .unwrap();
@@ -137,7 +137,7 @@ fn tze_input_sigdigests<A: tze::Authorization>(
     bundle: &tze::Bundle<A>,
     input: &SignableInput<'_>,
     txid_digests: &TzeDigests<Blake2bHash>,
-) -> TzeDigests<Blake2bHash> {
+) -> Blake2bHash {
     let mut ch = hasher(ZCASH_TZE_INPUT_HASH_PERSONALIZATION);
     if let SignableInput::Tze {
         index,
@@ -154,21 +154,21 @@ fn tze_input_sigdigests<A: tze::Authorization>(
     }
     let per_input_digest = ch.finalize();
 
-    TzeDigests {
-        inputs_digest: txid_digests.inputs_digest,
-        outputs_digest: txid_digests.outputs_digest,
-        per_input_digest: Some(per_input_digest),
-    }
+    let mut h = hasher(ZCASH_TZE_HASH_PERSONALIZATION);
+    h.write_all(txid_digests.inputs_digest.as_bytes()).unwrap();
+    h.write_all(txid_digests.outputs_digest.as_bytes()).unwrap();
+    h.write_all(txid_digests.signing_context.as_bytes()).unwrap();
+    h.finalize()
 }
 
 /// Implements the [Signature Digest section of ZIP 244](https://zips.z.cash/zip-0244#signature-digest)
 pub fn v5_signature_hash<
     TA: TransparentAuthorizingContext,
-    A: Authorization<TransparentAuth = TA>,
+    A: Authorization,
 >(
     tx: &TransactionData<A>,
     signable_input: &SignableInput<'_>,
-    txid_parts: &TxDigests<Blake2bHash>,
+    txid_parts: &TxDigests<TA>,
 ) -> Blake2bHash {
     to_hash(
         tx.version,

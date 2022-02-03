@@ -928,26 +928,41 @@ impl Transaction {
 
 #[derive(Clone)]
 pub struct TransparentDigests<A> {
-    pub prevouts_digest: A,
-    pub sequence_digest: A,
-    pub outputs_digest: A,
+    pub prevouts_digest: Blake2bHash,
+    pub sequence_digest: Blake2bHash,
+    pub outputs_digest: Blake2bHash,
+    pub signing_context: A,
 }
 
 #[derive(Clone)]
 pub struct TzeDigests<A> {
-    pub inputs_digest: A,
-    pub outputs_digest: A,
-    pub per_input_digest: Option<A>,
+    pub inputs_digest: Blake2bHash,
+    pub outputs_digest: Blake2bHash,
+    pub signing_context: A,
+}
+
+pub trait TxDigestsCtx {
+    type TransparentCtx;
+
+    #[cfg(feature = "zfuture")] 
+    type TzeCtx;
+}
+
+impl TxDigestsCtx for () {
+    type TransparentCtx = ();
+
+    #[cfg(feature = "zfuture")] 
+    type TzeCtx = ();
 }
 
 #[derive(Clone)]
-pub struct TxDigests<A> {
-    pub header_digest: A,
-    pub transparent_digests: Option<TransparentDigests<A>>,
-    pub sapling_digest: Option<A>,
-    pub orchard_digest: Option<A>,
+pub struct TxDigests<Ctx: TxDigestsCtx> {
+    pub header_digest: Blake2bHash,
+    pub transparent_digests: Option<TransparentDigests<Ctx::TransparentCtx>>,
+    pub sapling_digest: Option<Blake2bHash>,
+    pub orchard_digest: Option<Blake2bHash>,
     #[cfg(feature = "zfuture")]
-    pub tze_digests: Option<TzeDigests<A>>,
+    pub tze_digests: Option<TzeDigests<Ctx::TzeCtx>>,
 }
 
 pub trait TransactionDigest<A: Authorization> {

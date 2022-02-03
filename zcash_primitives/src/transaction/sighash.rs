@@ -9,7 +9,7 @@ use super::{
     },
     sighash_v4::v4_signature_hash,
     sighash_v5::v5_signature_hash,
-    Authorization, TransactionData, TxDigests, TxVersion,
+    Authorization, TransactionData, TxDigests, TxDigestsCtx, TxVersion,
 };
 
 #[cfg(feature = "zfuture")]
@@ -80,11 +80,12 @@ pub fn signature_hash<
     'a,
     TA: TransparentAuthorizingContext,
     SA: sapling::Authorization<Proof = GrothProofBytes>,
-    A: Authorization<SaplingAuth = SA, TransparentAuth = TA>,
+    A: Authorization<SaplingAuth = SA>,
+    Ctx: TxDigestsCtx<TransparentCtx = TA>
 >(
     tx: &TransactionData<A>,
     signable_input: &SignableInput<'a>,
-    txid_parts: &TxDigests<Blake2bHash>,
+    txid_parts: &TxDigests<Ctx>,
 ) -> SignatureHash {
     SignatureHash(match tx.version {
         TxVersion::Sprout(_) | TxVersion::Overwinter | TxVersion::Sapling => {
