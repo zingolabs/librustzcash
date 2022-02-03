@@ -215,6 +215,21 @@ impl TransparentAuthorizingContext for Unauthorized {
     }
 }
 
+#[cfg(feature = "transparent-inputs")]
+impl TransparentAuthorizingContext for Vec<TransparentInputInfo> {
+    fn input_amounts(&self) -> Vec<Amount> {
+        return self.inputs.iter().map(|txin| txin.coin.value).collect();
+    }
+
+    fn input_scriptpubkeys(&self) -> Vec<Script> {
+        return self
+            .inputs
+            .iter()
+            .map(|txin| txin.coin.script_pubkey.clone())
+            .collect();
+    }
+}
+
 impl Bundle<Unauthorized> {
     pub fn apply_signatures(
         self,

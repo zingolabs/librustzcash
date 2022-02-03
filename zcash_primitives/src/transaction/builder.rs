@@ -28,7 +28,7 @@ use crate::{
         },
         sighash::{signature_hash, SignableInput},
         txid::TxIdDigester,
-        Transaction, TransactionData, TxVersion, Unauthorized,
+        Blake2bHash, Transaction, TransactionData, TxDigestsCtx, TxVersion, Unauthorized,
     },
     zip32::ExtendedSpendingKey,
 };
@@ -351,7 +351,30 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
         //
         // Signatures -- everything but the signatures must already have been added.
         //
+        struct Signable {}
+        impl TxDigestsCtx for Signable {
+            type TransparentCtx = transparent::builder::Unauthorized;
+            #[cfg(feature = "zfuture")]
+            type TzeCtx = ();
+        }
+
         let txid_parts = unauthed_tx.digest(TxIdDigester);
+        let txid_parts = super::TxDigests::<Signable> {
+            header_digest: txid_parts.header_digest,
+            transparent_digests: unauthed_tx
+                .transparent_bundle
+                .zip(txid_parts.transparent_digests)
+                .map(|(b, d)| super::TransparentDigests {
+                    prevouts_digest: d.prevouts_digest,
+                    sequence_digest: d.sequence_digest,
+                    outputs_digest: d.outputs_digest,
+                    signing_context: b.authorization.clone(),
+                }),
+            sapling_digest: txid_parts.sapling_digest,
+            orchard_digest: txid_parts.orchard_digest,
+            #[cfg(feature = "zfuture")]
+            tze_digests: txid_parts.tze_digests,
+        };
 
         let transparent_bundle = unauthed_tx.transparent_bundle.clone().map(|b| {
             b.apply_signatures(

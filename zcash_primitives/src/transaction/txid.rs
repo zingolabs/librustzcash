@@ -33,7 +33,7 @@ const ZCASH_HEADERS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdHeadersHash";
 pub(crate) const ZCASH_TRANSPARENT_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdTranspaHash";
 const ZCASH_SAPLING_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdSaplingHash";
 #[cfg(feature = "zfuture")]
-const ZCASH_TZE_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdTZE____Hash";
+pub(super) const ZCASH_TZE_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdTZE____Hash";
 
 // TxId transparent level 2 node personalization
 const ZCASH_PREVOUTS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdPrevoutHash";
@@ -274,8 +274,8 @@ fn hash_sapling_txid_empty() -> Blake2bHash {
 #[cfg(feature = "zfuture")]
 fn hash_tze_txid_data<A>(tze_digests: &TzeDigests<A>) -> Blake2bHash {
     let mut h = hasher(ZCASH_TZE_HASH_PERSONALIZATION);
-    h.write_all(d.inputs_digest.as_bytes()).unwrap();
-    h.write_all(d.outputs_digest.as_bytes()).unwrap();
+    h.write_all(tze_digests.inputs_digest.as_bytes()).unwrap();
+    h.write_all(tze_digests.outputs_digest.as_bytes()).unwrap();
     h.finalize()
 }
 
