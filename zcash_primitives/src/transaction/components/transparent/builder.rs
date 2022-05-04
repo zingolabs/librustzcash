@@ -7,7 +7,9 @@ use crate::{
     transaction::{
         components::{
             amount::Amount,
-            transparent::{self, Authorization, Authorized, Bundle, TxIn, TxOut},
+            transparent::{
+                self, Authorization, Authorized, Bundle, TxIn, TxOut,
+            },
         },
         sighash::TransparentAuthorizingContext,
     },
@@ -94,7 +96,8 @@ impl TransparentBuilder {
         // Ensure that the RIPEMD-160 digest of the public key associated with the
         // provided secret key matches that of the address to which the provided
         // output may be spent.
-        let pubkey = secp256k1::PublicKey::from_secret_key(&self.secp, &sk).serialize();
+        let pubkey =
+            secp256k1::PublicKey::from_secret_key(&self.secp, &sk).serialize();
         match coin.script_pubkey.address() {
             Some(TransparentAddress::PublicKey(hash)) => {
                 use ripemd::Ripemd160;
@@ -117,7 +120,11 @@ impl TransparentBuilder {
         Ok(())
     }
 
-    pub fn add_output(&mut self, to: &TransparentAddress, value: Amount) -> Result<(), Error> {
+    pub fn add_output(
+        &mut self,
+        to: &TransparentAddress,
+        value: Amount,
+    ) -> Result<(), Error> {
         if value.is_negative() {
             return Err(Error::InvalidAmount);
         }
@@ -218,16 +225,16 @@ impl TransparentAuthorizingContext for Unauthorized {
 impl Bundle<Unauthorized> {
     pub fn apply_signatures(
         self,
-        #[cfg(feature = "transparent-inputs")] mtx: &TransactionData<tx::Unauthorized>,
-        #[cfg(feature = "transparent-inputs")] txid_parts_cache: &TxDigests<Blake2bHash>,
+        #[cfg(feature = "transparent-inputs")] mtx: &TransactionData<
+            tx::Unauthorized,
+        >,
+        #[cfg(feature = "transparent-inputs")] txid_parts_cache: &TxDigests<
+            Blake2bHash,
+        >,
     ) -> Bundle<Authorized> {
         #[cfg(feature = "transparent-inputs")]
-        let script_sigs = self
-            .authorization
-            .inputs
-            .iter()
-            .enumerate()
-            .map(|(index, info)| {
+        let script_sigs = self.authorization.inputs.iter().enumerate().map(
+            |(index, info)| {
                 let sighash = signature_hash(
                     mtx,
                     &SignableInput::Transparent {
@@ -240,8 +247,9 @@ impl Bundle<Unauthorized> {
                     txid_parts_cache,
                 );
 
-                let msg = secp256k1::Message::from_slice(sighash.as_ref()).expect("32 bytes");
-                let sig = self.authorization.secp.sign_ecdsa(&msg, &info.sk);
+                let msg = secp256k1::Message::from_slice(sighash.as_ref())
+                    .expect("32 bytes");
+                let sig = self.authorization.secp.sign(&msg, &info.sk);
 
                 // Signature has to have "SIGHASH_ALL" appended to it
                 let mut sig_bytes: Vec<u8> = sig.serialize_der()[..].to_vec();
@@ -249,7 +257,8 @@ impl Bundle<Unauthorized> {
 
                 // P2PKH scriptSig
                 Script::default() << &sig_bytes[..] << &info.pubkey[..]
-            });
+            },
+        );
 
         #[cfg(not(feature = "transparent-inputs"))]
         let script_sigs = std::iter::empty::<Script>();
