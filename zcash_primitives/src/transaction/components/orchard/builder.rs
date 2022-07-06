@@ -1,8 +1,37 @@
 use crate::consensus::{self, BlockHeight, NetworkUpgrade};
+use orchard::{
+    builder::{Builder, Error, InProgress, Unauthorized, Unproven},
+    bundle::Bundle,
+};
 
 pub struct WithoutOrchard;
 
-pub struct WithOrchard(Option<orchard::builder::Builder>);
+pub struct WithOrchard(pub(crate) Option<Builder>);
+
+pub trait MaybeOrchard {
+    fn build<V: core::convert::TryFrom<i64>>(
+        self,
+        rng: impl rand::RngCore,
+    ) -> Option<Result<Bundle<InProgress<Unproven, Unauthorized>, V>, Error>>;
+}
+
+impl MaybeOrchard for WithOrchard {
+    fn build<V: core::convert::TryFrom<i64>>(
+        self,
+        rng: impl rand::RngCore,
+    ) -> Option<Result<Bundle<InProgress<Unproven, Unauthorized>, V>, Error>> {
+        self.0.map(|builder| builder.build(rng))
+    }
+}
+
+impl MaybeOrchard for WithoutOrchard {
+    fn build<V: core::convert::TryFrom<i64>>(
+        self,
+        _: impl rand::RngCore,
+    ) -> Option<Result<Bundle<InProgress<Unproven, Unauthorized>, V>, Error>> {
+        None
+    }
+}
 
 impl WithOrchard {
     pub(crate) fn new<P: consensus::Parameters>(
