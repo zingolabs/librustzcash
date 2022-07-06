@@ -19,7 +19,7 @@ use crate::{
     transaction::{
         components::{
             amount::{Amount, DEFAULT_FEE},
-            orchard::builder::{WithOrchard, WithoutOrchard},
+            orchard::builder::{MaybeOrchard, WithOrchard, WithoutOrchard},
             sapling::{
                 self,
                 builder::{SaplingBuilder, SaplingMetadata},
@@ -58,6 +58,9 @@ pub enum Error {
     TransparentBuild(transparent::builder::Error),
     SaplingBuild(sapling::builder::Error),
     OrchardBuild(orchard::builder::Error),
+    OrchardSpend(&'static str),
+    OrchardRecipient(&'static str),
+    NU5Inactive,
     #[cfg(feature = "zfuture")]
     TzeBuild(tze::builder::Error),
 }
@@ -73,6 +76,12 @@ impl fmt::Display for Error {
             Error::TransparentBuild(err) => err.fmt(f),
             Error::SaplingBuild(err) => err.fmt(f),
             Error::OrchardBuild(err) => write!(f, "{:?}", err),
+            Error::OrchardSpend(err) => write!(f, "Could not add orchard spend: {}", err),
+            Error::OrchardRecipient(err) => write!(f, "Could not add orchard recipient: {}", err),
+            Error::NU5Inactive => write!(
+                f,
+                "Cannot create orchard transactions before NU5 activation"
+            ),
             #[cfg(feature = "zfuture")]
             Error::TzeBuild(err) => err.fmt(f),
         }
@@ -115,7 +124,7 @@ enum ChangeAddress {
 }
 
 /// Generates a [`Transaction`] from its inputs and outputs.
-pub struct Builder<'a, P, R, O = WithoutOrchard> {
+pub struct Builder<'a, P, R, O: MaybeOrchard = WithoutOrchard> {
     params: P,
     rng: R,
     target_height: BlockHeight,
@@ -186,17 +195,12 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
     }
 }
 
-impl<'a, P: consensus::Parameters, R: RngCore, O> Builder<'a, P, R, O> {
+impl<'a, P: consensus::Parameters, R: RngCore, O: MaybeOrchard> Builder<'a, P, R, O> {
     /// Common utility function for builder construction.
     ///
     /// WARNING: THIS MUST REMAIN PRIVATE AS IT ALLOWS CONSTRUCTION OF BUILDERS WITH
     /// NON-CryptoRng RNGs. WE RELY ON THIS BEING PRIVATE BELOW IN `ThisIsAReallyBadIdea`.
-    fn new_internal(
-        params: P,
-        target_height: BlockHeight,
-        rng: R,
-        orchard_builder: O,
-    ) -> Self {
+    fn new_internal(params: P, target_height: BlockHeight, rng: R, orchard_builder: O) -> Self {
         Builder {
             params: params.clone(),
             rng,
@@ -230,8 +234,10 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R, WithOrchard> {
         merkle_path: orchard::tree::MerklePath,
     ) -> Result<(), Error> {
         self.orchard_builder
+            .0
+            .ok_or(Error::NU5Inactive)?
             .add_spend(fvk, note, merkle_path)
-            .map_err(Error::OrchardBuild)
+            .map_err(Error::OrchardSpend)
     }
 
     /// Adds an Orchard address which will receive funds in this transaction.
@@ -239,21 +245,23 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R, WithOrchard> {
         &mut self,
         ovk: Option<orchard::keys::OutgoingViewingKey>,
         recipient: orchard::Address,
-        value: Amount,
+        value: u64,
         memo: MemoBytes,
     ) -> Result<(), Error> {
         self.orchard_builder
+            .0
+            .ok_or(Error::NU5Inactive)?
             .add_recipient(
                 ovk,
                 recipient,
-                orchard::value::NoteValue::from(value),
+                orchard::value::NoteValue::from_raw(value),
                 Some(*memo.as_array()),
             )
-            .map_err(Error::OrchardBuild)
+            .map_err(Error::OrchardRecipient)
     }
 }
 
-impl<'a, P: consensus::Parameters, R: RngCore, O> Builder<'a, P, R, O> {
+impl<'a, P: consensus::Parameters, R: RngCore, O: MaybeOrchard> Builder<'a, P, R, O> {
     /// Adds a Sapling note to be spent in this transaction.
     ///
     /// Returns an error if the given Merkle path does not have the same anchor as the
@@ -404,12 +412,11 @@ impl<'a, P: consensus::Parameters, R: RngCore, O> Builder<'a, P, R, O> {
             )
             .map_err(Error::SaplingBuild)?;
 
-        let orchard_bundle: Option<orchard::Bundle<_, Amount>> =
-            if let Some(builder) = self.orchard_builder {
-                Some(builder.build(&mut rng).map_err(Error::OrchardBuild)?)
-            } else {
-                None
-            };
+        let orchard_bundle: Option<orchard::Bundle<_, Amount>> = self
+            .orchard_builder
+            .build(&mut rng)
+            .transpose()
+            .map_err(Error::OrchardBuild)?;
 
         #[cfg(feature = "zfuture")]
         let (tze_bundle, tze_signers) = self.tze_builder.build();
@@ -568,7 +575,7 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
     ///
     /// WARNING: DO NOT USE IN PRODUCTION
     pub fn test_only_new_with_rng(params: P, height: BlockHeight, rng: R) -> Builder<'a, P, R> {
-        Self::new_internal(params, height, rng)
+        Self::new_internal(params, height, rng, WithoutOrchard)
     }
 
     pub fn mock_build(self) -> Result<(Transaction, SaplingMetadata), Error> {
@@ -589,6 +596,7 @@ mod tests {
         sapling::{prover::mock::MockTxProver, Node, Rseed},
         transaction::components::{
             amount::{Amount, DEFAULT_FEE},
+            orchard::builder::WithoutOrchard,
             sapling::builder::{self as build_s},
             transparent::builder::{self as build_t},
         },
@@ -644,7 +652,7 @@ mod tests {
             fee: Amount::zero(),
             transparent_builder: TransparentBuilder::empty(),
             sapling_builder: SaplingBuilder::new(TEST_NETWORK, sapling_activation_height),
-            orchard_builder: None,
+            orchard_builder: WithoutOrchard,
             change_address: None,
             #[cfg(feature = "zfuture")]
             tze_builder: TzeBuilder::empty(),
