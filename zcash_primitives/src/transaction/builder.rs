@@ -195,11 +195,8 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
     }
 }
 
-impl<'a, P: consensus::Parameters, R: RngCore, O: MaybeOrchard> Builder<'a, P, R, O> {
+impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng, O: MaybeOrchard> Builder<'a, P, R, O> {
     /// Common utility function for builder construction.
-    ///
-    /// WARNING: THIS MUST REMAIN PRIVATE AS IT ALLOWS CONSTRUCTION OF BUILDERS WITH
-    /// NON-CryptoRng RNGs. WE RELY ON THIS BEING PRIVATE BELOW IN `ThisIsAReallyBadIdea`.
     fn new_internal(params: P, target_height: BlockHeight, rng: R, orchard_builder: O) -> Self {
         Builder {
             params: params.clone(),
@@ -220,7 +217,7 @@ impl<'a, P: consensus::Parameters, R: RngCore, O: MaybeOrchard> Builder<'a, P, R
     }
 }
 
-impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R, WithOrchard> {
+impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R, WithOrchard> {
     // TODO: Change the way the builder is constructed so we don't even expose these
     // functions if you don't provide an Orchard anchor.
     /// Adds a note to be spent in this bundle.
@@ -261,7 +258,7 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R, WithOrchard> {
     }
 }
 
-impl<'a, P: consensus::Parameters, R: RngCore, O: MaybeOrchard> Builder<'a, P, R, O> {
+impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng, O: MaybeOrchard> Builder<'a, P, R, O> {
     /// Adds a Sapling note to be spent in this transaction.
     ///
     /// Returns an error if the given Merkle path does not have the same anchor as the
@@ -474,36 +471,11 @@ impl<'a, P: consensus::Parameters, R: RngCore, O: MaybeOrchard> Builder<'a, P, R
             None => (None, SaplingMetadata::empty()),
         };
 
-        // This is only safe because Builder::new_internal is a crate-private constructor.
-        struct ThisIsAReallyBadIdea<'a, R: RngCore>(&'a mut R);
-        impl<'a, R: RngCore> CryptoRng for ThisIsAReallyBadIdea<'a, R> {}
-        impl<'a, R: RngCore> RngCore for ThisIsAReallyBadIdea<'a, R> {
-            fn next_u32(&mut self) -> u32 {
-                self.0.next_u32()
-            }
-
-            fn next_u64(&mut self) -> u64 {
-                self.0.next_u64()
-            }
-
-            fn fill_bytes(&mut self, dest: &mut [u8]) {
-                self.0.fill_bytes(dest)
-            }
-
-            fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
-                self.0.try_fill_bytes(dest)
-            }
-        }
-
         let orchard_bundle = unauthed_tx
             .orchard_bundle
             .map(|b| {
                 b.create_proof(pk, &mut rng).and_then(|b| {
-                    b.apply_signatures(
-                        ThisIsAReallyBadIdea(&mut rng),
-                        *shielded_sig_commitment.as_ref(),
-                        orchard_sk,
-                    )
+                    b.apply_signatures(&mut rng, *shielded_sig_commitment.as_ref(), orchard_sk)
                 })
             })
             .transpose()
@@ -525,6 +497,11 @@ impl<'a, P: consensus::Parameters, R: RngCore, O: MaybeOrchard> Builder<'a, P, R
         // The unwrap() here is safe because the txid hashing
         // of freeze() should be infalliable.
         Ok((authorized_tx.freeze().unwrap(), tx_metadata))
+    }
+
+    #[cfg(any(test, feature = "test-dependencies"))]
+    pub fn mock_build(self) -> Result<(Transaction, SaplingMetadata), Error> {
+        self.build(&MockTxProver)
     }
 }
 
@@ -574,12 +551,31 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
     /// The fee will be set to the default fee (0.0001 ZEC).
     ///
     /// WARNING: DO NOT USE IN PRODUCTION
-    pub fn test_only_new_with_rng(params: P, height: BlockHeight, rng: R) -> Builder<'a, P, R> {
-        Self::new_internal(params, height, rng, WithoutOrchard)
-    }
+    pub fn test_only_new_with_rng(
+        params: P,
+        height: BlockHeight,
+        rng: R,
+    ) -> Builder<'a, P, impl RngCore + CryptoRng> {
+        struct FakeCryptoRng<R: RngCore>(R);
+        impl<R: RngCore> CryptoRng for FakeCryptoRng<R> {}
+        impl<R: RngCore> RngCore for FakeCryptoRng<R> {
+            fn next_u32(&mut self) -> u32 {
+                self.0.next_u32()
+            }
 
-    pub fn mock_build(self) -> Result<(Transaction, SaplingMetadata), Error> {
-        self.build(&MockTxProver)
+            fn next_u64(&mut self) -> u64 {
+                self.0.next_u64()
+            }
+
+            fn fill_bytes(&mut self, dest: &mut [u8]) {
+                self.0.fill_bytes(dest)
+            }
+
+            fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
+                self.0.try_fill_bytes(dest)
+            }
+        }
+        Builder::new_internal(params, height, FakeCryptoRng(rng), WithoutOrchard)
     }
 }
 
