@@ -88,6 +88,27 @@ impl fmt::Display for Error {
     }
 }
 
+impl PartialEq for Error {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Error::ChangeIsNegative(e), Error::ChangeIsNegative(f)) => e == f,
+            (Error::InvalidAmount, Error::InvalidAmount) => true,
+            (Error::NoChangeAddress, Error::NoChangeAddress) => true,
+            (Error::TransparentBuild(e), Error::TransparentBuild(f)) => e == f,
+            (Error::SaplingBuild(e), Error::SaplingBuild(f)) => e == f,
+            (Error::OrchardBuild(e), Error::OrchardBuild(f)) => {
+                format!("{:?}", e) == format!("{:?}", f)
+            }
+            (Error::OrchardSpend(e), Error::OrchardSpend(f)) => e == f,
+            (Error::OrchardRecipient(e), Error::OrchardRecipient(f)) => e == f,
+            (Error::NU5Inactive, Error::NU5Inactive) => true,
+            #[cfg(feature = "zfuture")]
+            (Error::TzeBuild(e), Error::TzeBuild(f)) => e == f,
+            _ => false,
+        }
+    }
+}
+
 impl error::Error for Error {}
 
 /// Reports on the progress made by the builder towards building a transaction.
@@ -133,6 +154,7 @@ pub struct Builder<'a, P, R, O: MaybeOrchard = WithoutOrchard> {
     transparent_builder: TransparentBuilder,
     sapling_builder: SaplingBuilder<P>,
     orchard_builder: O,
+    orchard_saks: Vec<orchard::keys::SpendAuthorizingKey>,
     change_address: Option<ChangeAddress>,
     #[cfg(feature = "zfuture")]
     tze_builder: TzeBuilder<'a, TransactionData<Unauthorized>>,
@@ -171,12 +193,8 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, OsRng, WithOrchard> {
         target_height: BlockHeight,
         anchor: orchard::tree::Anchor,
     ) -> Self {
-        Builder::new_internal(
-            params,
-            target_height,
-            OsRng,
-            WithOrchard::new(params, target_height, anchor),
-        )
+        let with_orchard = WithOrchard::new(&params, target_height, anchor);
+        Builder::new_internal(params, target_height, OsRng, with_orchard)
     }
 }
 
@@ -207,6 +225,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng, O: MaybeOrchard> Buil
             transparent_builder: TransparentBuilder::empty(),
             sapling_builder: SaplingBuilder::new(params, target_height),
             orchard_builder,
+            orchard_saks: Vec::new(),
             change_address: None,
             #[cfg(feature = "zfuture")]
             tze_builder: TzeBuilder::empty(),
@@ -226,14 +245,17 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R, Wit
     /// the given note.
     pub fn add_orchard_spend(
         &mut self,
-        fvk: orchard::keys::FullViewingKey,
+        sk: orchard::keys::SpendingKey,
         note: orchard::Note,
         merkle_path: orchard::tree::MerklePath,
     ) -> Result<(), Error> {
+        self.orchard_saks
+            .push(orchard::keys::SpendAuthorizingKey::from(&sk));
         self.orchard_builder
             .0
+            .as_mut()
             .ok_or(Error::NU5Inactive)?
-            .add_spend(fvk, note, merkle_path)
+            .add_spend(orchard::keys::FullViewingKey::from(&sk), note, merkle_path)
             .map_err(Error::OrchardSpend)
     }
 
@@ -247,6 +269,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R, Wit
     ) -> Result<(), Error> {
         self.orchard_builder
             .0
+            .as_mut()
             .ok_or(Error::NU5Inactive)?
             .add_recipient(
                 ovk,
@@ -471,12 +494,19 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng, O: MaybeOrchard> Buil
             None => (None, SaplingMetadata::empty()),
         };
 
+        let orchard_saks = self.orchard_saks.clone();
+
         let orchard_bundle = unauthed_tx
             .orchard_bundle
             .map(|b| {
-                b.create_proof(pk, &mut rng).and_then(|b| {
-                    b.apply_signatures(&mut rng, *shielded_sig_commitment.as_ref(), orchard_sk)
-                })
+                b.create_proof(&orchard::circuit::ProvingKey::build(), &mut rng)
+                    .and_then(|b| {
+                        b.apply_signatures(
+                            &mut rng,
+                            *shielded_sig_commitment.as_ref(),
+                            &orchard_saks,
+                        )
+                    })
             })
             .transpose()
             .map_err(Error::OrchardBuild)?;
@@ -649,6 +679,7 @@ mod tests {
             transparent_builder: TransparentBuilder::empty(),
             sapling_builder: SaplingBuilder::new(TEST_NETWORK, sapling_activation_height),
             orchard_builder: WithoutOrchard,
+            orchard_saks: Vec::new(),
             change_address: None,
             #[cfg(feature = "zfuture")]
             tze_builder: TzeBuilder::empty(),

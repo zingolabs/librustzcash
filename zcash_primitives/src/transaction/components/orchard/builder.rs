@@ -35,7 +35,7 @@ impl MaybeOrchard for WithoutOrchard {
 
 impl WithOrchard {
     pub(crate) fn new<P: consensus::Parameters>(
-        params: P,
+        params: &P,
         target_height: BlockHeight,
         anchor: orchard::tree::Anchor,
     ) -> Self {
