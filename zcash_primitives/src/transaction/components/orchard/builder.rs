@@ -1,4 +1,7 @@
-use crate::consensus::{self, BlockHeight, NetworkUpgrade};
+use crate::{
+    consensus::{self, BlockHeight, NetworkUpgrade},
+    transaction::components::Amount,
+};
 use orchard::{
     builder::{Builder, Error, InProgress, Unauthorized, Unproven},
     bundle::Bundle,
@@ -13,6 +16,7 @@ pub trait MaybeOrchard {
         self,
         rng: impl rand::RngCore,
     ) -> Option<Result<Bundle<InProgress<Unproven, Unauthorized>, V>, Error>>;
+    fn value_balance(&self) -> Amount;
 }
 
 impl MaybeOrchard for WithOrchard {
@@ -22,6 +26,13 @@ impl MaybeOrchard for WithOrchard {
     ) -> Option<Result<Bundle<InProgress<Unproven, Unauthorized>, V>, Error>> {
         self.0.map(|builder| builder.build(rng))
     }
+
+    fn value_balance(&self) -> Amount {
+        match &self.0 {
+            Some(builder) => Amount::from_i64(builder.value_balance()).unwrap(),
+            None => Amount::zero(),
+        }
+    }
 }
 
 impl MaybeOrchard for WithoutOrchard {
@@ -30,6 +41,10 @@ impl MaybeOrchard for WithoutOrchard {
         _: impl rand::RngCore,
     ) -> Option<Result<Bundle<InProgress<Unproven, Unauthorized>, V>, Error>> {
         None
+    }
+
+    fn value_balance(&self) -> Amount {
+        Amount::zero()
     }
 }
 

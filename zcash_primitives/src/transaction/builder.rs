@@ -361,6 +361,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng, O: MaybeOrchard> Buil
                 .value_balance()
                 .ok_or(Error::InvalidAmount)?,
             self.sapling_builder.value_balance(),
+            self.orchard_builder.value_balance(),
             #[cfg(feature = "zfuture")]
             self.tze_builder
                 .value_balance()
