@@ -26,4 +26,4 @@ halo2_gadgets = { git = "https://github.com/zcash/halo2.git", rev = "642924d6143
 
 
 [workspace.dependencies]
-orchard = { git = "https://github.com/zcash/orchard", rev = "6cbde279e90974201bedbd9b5ddf155e8f8b1e8e"}
+orchard = { git = "https://github.com/zingolabs/orchard", rev = "6cbde279e90974201bedbd9b5ddf155e8f8b1e8e"}
