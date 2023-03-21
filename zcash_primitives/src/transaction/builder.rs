@@ -57,9 +57,9 @@ pub enum Error {
     NoChangeAddress,
     TransparentBuild(transparent::builder::Error),
     SaplingBuild(sapling::builder::Error),
-    OrchardBuild(orchard::builder::Error),
-    OrchardSpend(&'static str),
-    OrchardRecipient(&'static str),
+    OrchardBuild(orchard::builder::BuildError),
+    OrchardSpend(orchard::builder::SpendError),
+    OrchardRecipient(orchard::builder::OutputError),
     NU5Inactive,
     #[cfg(feature = "zfuture")]
     TzeBuild(tze::builder::Error),
