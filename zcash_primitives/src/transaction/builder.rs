@@ -403,6 +403,32 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             .ok_or(BalanceError::Overflow)
     }
 
+    pub fn get_fee<FR: FeeRule>(
+        &self,
+        fee_rule: &FR,
+    ) -> Result<Amount, Error<<FR as super::fees::FeeRule>::Error>> {
+        fee_rule
+            .fee_required(
+                &self.params,
+                self.target_height,
+                self.transparent_builder.inputs(),
+                self.transparent_builder.outputs(),
+                self.sapling_builder.inputs().len(),
+                self.sapling_builder.bundle_output_count(),
+                match std::cmp::max(
+                    self.orchard_builder
+                        .as_ref()
+                        .map_or(0, |builder| builder.outputs().len()),
+                    self.orchard_builder
+                        .as_ref()
+                        .map_or(0, |builder| builder.spends().len()),
+                ) {
+                    1 => 2,
+                    n => n,
+                },
+            )
+            .map_err(Error::Fee)
+    }
     /// Builds a transaction from the configured spends and outputs.
     ///
     /// Upon success, returns a tuple containing the final transaction, and the
