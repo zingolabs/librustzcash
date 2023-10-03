@@ -402,7 +402,11 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             .sum::<Option<_>>()
             .ok_or(BalanceError::Overflow)
     }
-
+    /// Reports the implied fee
+    ///
+    /// This fee is a function of the spends and outputs that
+    /// have been added to the builder and the FeeRule, that
+    /// is supplied as this methods only free parameter.
     pub fn get_fee<FR: FeeRule>(
         &self,
         fee_rule: &FR,
