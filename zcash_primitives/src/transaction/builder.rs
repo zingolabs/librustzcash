@@ -438,27 +438,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
         prover: &impl TxProver,
         fee_rule: &FR,
     ) -> Result<(Transaction, SaplingMetadata), Error<FR::Error>> {
-        let fee = fee_rule
-            .fee_required(
-                &self.params,
-                self.target_height,
-                self.transparent_builder.inputs(),
-                self.transparent_builder.outputs(),
-                self.sapling_builder.inputs().len(),
-                self.sapling_builder.bundle_output_count(),
-                match std::cmp::max(
-                    self.orchard_builder
-                        .as_ref()
-                        .map_or(0, |builder| builder.outputs().len()),
-                    self.orchard_builder
-                        .as_ref()
-                        .map_or(0, |builder| builder.spends().len()),
-                ) {
-                    1 => 2,
-                    n => n,
-                },
-            )
-            .map_err(Error::Fee)?;
+        let fee = self.get_fee(fee_rule)?;
         self.build_internal(prover, fee)
     }
 
