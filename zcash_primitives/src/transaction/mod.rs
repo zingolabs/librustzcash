@@ -99,6 +99,19 @@ impl From<TxId> for [u8; 32] {
 }
 
 impl TxId {
+    // TODO:  Verify order of bytes.
+    pub fn from_hex(hex: String) -> Self {
+        let mut txid_bytes = [0u8; 32];
+        txid_bytes.copy_from_slice(
+            hex::decode(hex)
+                .unwrap()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
+        Self::from_bytes(txid_bytes)
+    }
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
         TxId(bytes)
     }
