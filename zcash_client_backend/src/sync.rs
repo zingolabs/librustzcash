@@ -323,7 +323,7 @@ fn delete_cached_blocks(fsblockdb_root: &Path, block_meta: Vec<BlockMeta>) -> Jo
 fn scan_blocks<P, DbT>(
     params: &P,
     fsblockdb_root: &Path,
-    db_cache: &mut FsBlockDb,
+    db_cache: &mut BlockCache,
     db_data: &mut DbT,
     scan_range: &ScanRange,
 ) -> Result<bool, anyhow::Error>
