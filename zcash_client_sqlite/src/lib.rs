@@ -63,9 +63,9 @@ use zcash_client_backend::{
         self,
         chain::{BlockSource, CommitmentTreeRoot},
         scanning::{ScanPriority, ScanRange},
-        AccountBirthday, BlockMetadata, DecryptedTransaction, InputSource, NullifierQuery,
-        ScannedBlock, SentTransaction, WalletCommitmentTrees, WalletRead, WalletSummary,
-        WalletWrite, SAPLING_SHARD_HEIGHT,
+        AccountBirthday, BlockCache, BlockMetadata, DecryptedTransaction, InputSource,
+        NullifierQuery, ScannedBlock, SentTransaction, WalletCommitmentTrees, WalletRead,
+        WalletSummary, WalletWrite, SAPLING_SHARD_HEIGHT,
     },
     keys::{UnifiedAddressRequest, UnifiedFullViewingKey, UnifiedSpendingKey},
     proto::compact_formats::CompactBlock,
@@ -1032,7 +1032,11 @@ impl FsBlockDb {
     pub fn find_block(&self, height: BlockHeight) -> Result<Option<BlockMeta>, FsBlockDbError> {
         Ok(chain::blockmetadb_find_block(&self.conn, height)?)
     }
+}
 
+#[cfg(feature = "unstable")]
+impl BlockCache for FsBlockDb {
+    type Error = FsBlockDbError;
     /// Rewinds the BlockMeta Db to the `block_height` provided.
     ///
     /// This doesn't delete any files referenced by the records
@@ -1041,7 +1045,7 @@ impl FsBlockDb {
     /// If the requested height is greater than or equal to the height
     /// of the last scanned block, or if the DB is empty, this function
     /// does nothing.
-    pub fn truncate_to_height(&self, block_height: BlockHeight) -> Result<(), FsBlockDbError> {
+    fn truncate_to_height(&self, block_height: BlockHeight) -> Result<(), FsBlockDbError> {
         Ok(chain::blockmetadb_truncate_to_height(
             &self.conn,
             block_height,

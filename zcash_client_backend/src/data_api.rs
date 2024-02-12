@@ -1099,6 +1099,11 @@ pub trait WalletCommitmentTrees {
     ) -> Result<(), ShardTreeError<Self::Error>>;
 }
 
+pub trait BlockCache {
+    type Error;
+    fn truncate_to_height(&self, block_height: BlockHeight) -> Result<(), Self::Error>;
+}
+
 #[cfg(feature = "test-dependencies")]
 pub mod testing {
     use incrementalmerkletree::Address;
