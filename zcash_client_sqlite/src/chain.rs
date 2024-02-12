@@ -189,6 +189,16 @@ pub(crate) fn blockmetadb_truncate_to_height(
 }
 
 #[cfg(feature = "unstable")]
+pub(crate) fn blockmetadb_delete_block(
+    conn: &Connection,
+    block_height: BlockHeight,
+) -> Result<(), rusqlite::Error> {
+    conn.prepare("DELETE FROM compactblocks_meta WHERE height = ?")?
+        .execute(params![u32::from(block_height)])?;
+    Ok(())
+}
+
+#[cfg(feature = "unstable")]
 pub(crate) fn blockmetadb_get_max_cached_height(
     conn: &Connection,
 ) -> Result<Option<BlockHeight>, rusqlite::Error> {

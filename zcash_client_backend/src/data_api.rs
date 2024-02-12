@@ -1101,6 +1101,7 @@ pub trait WalletCommitmentTrees {
 
 pub trait BlockCache {
     type Error;
+    fn delete_block(&self, block_height: BlockHeight) -> Result<(), Self::Error>;
     fn truncate_to_height(&self, block_height: BlockHeight) -> Result<(), Self::Error>;
 }
 

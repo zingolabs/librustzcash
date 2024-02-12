@@ -1051,6 +1051,11 @@ impl BlockCache for FsBlockDb {
             block_height,
         )?)
     }
+    /// Deletes the block at a specific height from the cache.
+    /// If the block is not in the cache, this function does nothing.
+    fn delete_block(&self, block_height: BlockHeight) -> Result<(), Self::Error> {
+        Ok(chain::blockmetadb_delete_block(&self.conn, block_height)?)
+    }
 }
 
 #[cfg(feature = "unstable")]
@@ -1215,24 +1220,41 @@ mod tests {
             AddressType::DefaultExternal,
             NonNegativeAmount::const_from_u64(10),
         );
+        let (h3, meta3, _) = st.generate_next_block(
+            &dfvk,
+            AddressType::DefaultExternal,
+            NonNegativeAmount::const_from_u64(15),
+        );
 
         // The BlockMeta DB is not updated until we do so explicitly.
         assert_eq!(st.cache().get_max_cached_height().unwrap(), None);
 
         // Inform the BlockMeta DB about the newly-persisted CompactBlocks.
-        st.cache().write_block_metadata(&[meta1, meta2]).unwrap();
+        st.cache()
+            .write_block_metadata(&[meta1, meta2, meta3])
+            .unwrap();
 
         // The BlockMeta DB now sees blocks up to height 2.
-        assert_eq!(st.cache().get_max_cached_height().unwrap(), Some(h2),);
+        assert_eq!(st.cache().get_max_cached_height().unwrap(), Some(h3),);
         assert_eq!(st.cache().find_block(h1).unwrap(), Some(meta1));
         assert_eq!(st.cache().find_block(h2).unwrap(), Some(meta2));
-        assert_eq!(st.cache().find_block(h2 + 1).unwrap(), None);
+        assert_eq!(st.cache().find_block(h3).unwrap(), Some(meta3));
+        assert_eq!(st.cache().find_block(h3 + 1).unwrap(), None);
 
-        // Rewinding to height 1 should cause the metadata for height 2 to be deleted.
+        // Deleting block at height 2 should cause the metadata for height 2 to be deleted.
+        st.cache().delete_block(h2).unwrap();
+        assert_eq!(st.cache().get_max_cached_height().unwrap(), Some(h3));
+        assert_eq!(st.cache().find_block(h1).unwrap(), Some(meta1));
+        assert_eq!(st.cache().find_block(h2).unwrap(), None);
+        assert_eq!(st.cache().find_block(h3).unwrap(), Some(meta3));
+        assert_eq!(st.cache().find_block(h3 + 1).unwrap(), None);
+
+        // Rewinding to height 1 should cause the metadata for height 3 to be deleted.
         st.cache().truncate_to_height(h1).unwrap();
         assert_eq!(st.cache().get_max_cached_height().unwrap(), Some(h1));
         assert_eq!(st.cache().find_block(h1).unwrap(), Some(meta1));
         assert_eq!(st.cache().find_block(h2).unwrap(), None);
+        assert_eq!(st.cache().find_block(h3).unwrap(), None);
         assert_eq!(st.cache().find_block(h2 + 1).unwrap(), None);
     }
 }
