@@ -115,7 +115,7 @@ where
 
                 // Delete the now-scanned blocks, because keeping the entire chain
                 // in CompactBlock files on disk is horrendous for the filesystem.
-                block_deletions.push(delete_cached_blocks(fsblockdb_root, block_meta));
+                block_deletions.push({db_cache.delete_block(block_meta.height));});
 
                 if scan_ranges_updated {
                     // The suggested scan ranges have been updated, so we re-request.
