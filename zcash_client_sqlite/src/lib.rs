@@ -1128,9 +1128,8 @@ extern crate assert_matches;
 
 #[cfg(test)]
 mod tests {
-    use zcash_client_backend::data_api::{AccountBirthday, WalletRead, WalletWrite};
-
     use crate::{testing::TestBuilder, AccountId, DEFAULT_UA_REQUEST};
+    use zcash_client_backend::data_api::{AccountBirthday, BlockCache, WalletRead, WalletWrite};
 
     #[cfg(feature = "unstable")]
     use {
