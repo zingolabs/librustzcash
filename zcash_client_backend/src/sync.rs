@@ -11,7 +11,7 @@ use tonic::{
 };
 use tracing::{debug, error, info};
 // TODO: Move `FsBlockDb` behind a `BlockCache` trait to break cyclic dependency.
-use zcash_client_sqlite::{chain::BlockMeta, FsBlockDb, FsBlockDbError};
+use zcash_client_sqlite::{chain::BlockMetaCache, FsBlockDb, FsBlockDbError};
 use zcash_primitives::{
     consensus::{BlockHeight, Parameters},
     merkle_tree::HashSer,
@@ -26,7 +26,7 @@ use crate::{
     proto::service::{self, compact_tx_streamer_client::CompactTxStreamerClient},
 };
 
-pub(crate) fn get_block_path(fsblockdb_root: &Path, meta: &BlockMeta) -> PathBuf {
+pub(crate) fn get_block_path(fsblockdb_root: &Path, meta: &BlockMetaCache) -> PathBuf {
     meta.block_file_path(&fsblockdb_root.join("blocks"))
 }
 
@@ -253,7 +253,7 @@ async fn download_blocks<ChT>(
     fsblockdb_root: &Path,
     db_cache: &FsBlockDb,
     scan_range: &ScanRange,
-) -> Result<Vec<BlockMeta>, anyhow::Error>
+) -> Result<Vec<BlockMetaCache>, anyhow::Error>
 where
     ChT: GrpcService<BoxBody>,
     ChT::Error: Into<StdError>,
@@ -283,7 +283,7 @@ where
                     (acc_sapling + sapling, acc_orchard + orchard)
                 });
 
-            let meta = BlockMeta {
+            let meta = BlockMetaCache {
                 height: block.height(),
                 block_hash: block.hash(),
                 block_time: block.time,
@@ -305,7 +305,7 @@ where
     Ok(block_meta)
 }
 
-fn delete_cached_blocks(fsblockdb_root: &Path, block_meta: Vec<BlockMeta>) -> JoinHandle<()> {
+fn delete_cached_blocks(fsblockdb_root: &Path, block_meta: Vec<BlockMetaCache>) -> JoinHandle<()> {
     let fsblockdb_root = fsblockdb_root.to_owned();
     tokio::spawn(async move {
         for meta in block_meta {
@@ -364,7 +364,7 @@ where
             // orphaned some of those blocks.
             db_cache
                 .with_blocks(Some(rewind_height + 1), None, |block| {
-                    let meta = BlockMeta {
+                    let meta = BlockMetaCache {
                         height: block.height(),
                         block_hash: block.hash(),
                         block_time: block.time,
