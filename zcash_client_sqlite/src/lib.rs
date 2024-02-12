@@ -80,9 +80,10 @@ use zcash_primitives::transaction::components::OutPoint;
 
 #[cfg(feature = "unstable")]
 use {
-    crate::chain::{fsblockdb_with_blocks, BlockMeta},
+    crate::chain::{block_file_path, fsblockdb_with_blocks},
     std::path::PathBuf,
     std::{fs, io},
+    zcash_client_backend::data_api::BlockMeta,
 };
 
 pub mod chain;
@@ -1008,7 +1009,7 @@ impl FsBlockDb {
     /// is absent from the blocks directory.
     pub fn write_block_metadata(&self, block_meta: &[BlockMeta]) -> Result<(), FsBlockDbError> {
         for m in block_meta {
-            let block_path = m.block_file_path(&self.blocks_dir);
+            let block_path = block_file_path(&m, &self.blocks_dir);
             match fs::metadata(&block_path) {
                 Err(e) => {
                     return Err(match e.kind() {

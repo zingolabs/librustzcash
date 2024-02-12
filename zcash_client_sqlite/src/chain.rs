@@ -16,6 +16,7 @@ use {
     std::fs::File,
     std::io::Read,
     std::path::{Path, PathBuf},
+    zcash_client_backend::data_api::BlockMeta,
 };
 
 pub mod init;
@@ -93,25 +94,12 @@ where
     Ok(())
 }
 
-/// Data structure representing a row in the block metadata database.
 #[cfg(feature = "unstable")]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BlockMeta {
-    pub height: BlockHeight,
-    pub block_hash: BlockHash,
-    pub block_time: u32,
-    pub sapling_outputs_count: u32,
-    pub orchard_actions_count: u32,
-}
-
-#[cfg(feature = "unstable")]
-impl BlockMeta {
-    pub fn block_file_path<P: AsRef<Path>>(&self, blocks_dir: &P) -> PathBuf {
-        blocks_dir.as_ref().join(Path::new(&format!(
-            "{}-{}-compactblock",
-            self.height, self.block_hash
-        )))
-    }
+pub fn block_file_path<P: AsRef<Path>>(block_meta: &BlockMeta, blocks_dir: &P) -> PathBuf {
+    blocks_dir.as_ref().join(Path::new(&format!(
+        "{}-{}-compactblock",
+        block_meta.height, block_meta.block_hash
+    )))
 }
 
 /// Inserts a batch of rows into the block metadata database.
@@ -302,7 +290,7 @@ where
         }
 
         let mut block_file =
-            File::open(cbr.block_file_path(&cache.blocks_dir)).map_err(to_chain_error)?;
+            File::open(block_file_path(&cbr, &cache.blocks_dir)).map_err(to_chain_error)?;
         let mut block_data = vec![];
         block_file
             .read_to_end(&mut block_data)

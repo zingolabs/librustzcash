@@ -79,9 +79,12 @@ use {
 };
 
 #[cfg(feature = "unstable")]
-use crate::{
-    chain::{init::init_blockmeta_db, BlockMeta},
-    FsBlockDb,
+use {
+    crate::{
+        chain::{block_file_path, init::init_blockmeta_db},
+        FsBlockDb,
+    },
+    zcash_client_backend::data_api::BlockMeta,
 };
 
 /// A builder for a `zcash_client_sqlite` test.
@@ -1039,7 +1042,7 @@ impl TestCache for FsBlockCache {
         };
 
         let blocks_dir = self.fsblockdb_root.as_ref().join("blocks");
-        let block_path = meta.block_file_path(&blocks_dir);
+        let block_path = block_file_path(&meta, &blocks_dir);
 
         File::create(block_path)
             .unwrap()

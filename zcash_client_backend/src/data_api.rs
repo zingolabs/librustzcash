@@ -247,6 +247,17 @@ impl AccountBalance {
     }
 }
 
+/// Data structure that can represent a row in the block metadata database.
+#[cfg(feature = "unstable")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BlockMeta {
+    pub height: BlockHeight,
+    pub block_hash: BlockHash,
+    pub block_time: u32,
+    pub sapling_outputs_count: u32,
+    pub orchard_actions_count: u32,
+}
+
 /// A polymorphic ratio type, usually used for rational numbers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Ratio<T> {
