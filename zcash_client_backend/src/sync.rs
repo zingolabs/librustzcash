@@ -11,7 +11,7 @@ use tonic::{
 };
 use tracing::{debug, error, info};
 // TODO: Move `FsBlockDb` behind a `BlockCache` trait to break cyclic dependency.
-use zcash_client_sqlite::{chain::BlockMetaCache, FsBlockDb, FsBlockDbError};
+use zcash_client_sqlite::{chain::BlockMeta, FsBlockDb, FsBlockDbError};
 use zcash_primitives::{
     consensus::{BlockHeight, Parameters},
     merkle_tree::HashSer,
@@ -26,7 +26,7 @@ use crate::{
     proto::service::{self, compact_tx_streamer_client::CompactTxStreamerClient},
 };
 
-pub(crate) fn get_block_path(fsblockdb_root: &Path, meta: &BlockMetaCache) -> PathBuf {
+pub(crate) fn get_block_path(fsblockdb_root: &Path, meta: &BlockMeta) -> PathBuf {
     meta.block_file_path(&fsblockdb_root.join("blocks"))
 }
 
@@ -115,7 +115,7 @@ where
 
                 // Delete the now-scanned blocks, because keeping the entire chain
                 // in CompactBlock files on disk is horrendous for the filesystem.
-                block_deletions.push({db_cache.delete_block(block_meta.height);});
+                block_deletions.push(delete_cached_blocks(fsblockdb_root, block_meta));
 
                 if scan_ranges_updated {
                     // The suggested scan ranges have been updated, so we re-request.
@@ -253,7 +253,7 @@ async fn download_blocks<ChT>(
     fsblockdb_root: &Path,
     db_cache: &FsBlockDb,
     scan_range: &ScanRange,
-) -> Result<Vec<BlockMetaCache>, anyhow::Error>
+) -> Result<Vec<BlockMeta>, anyhow::Error>
 where
     ChT: GrpcService<BoxBody>,
     ChT::Error: Into<StdError>,
@@ -283,7 +283,7 @@ where
                     (acc_sapling + sapling, acc_orchard + orchard)
                 });
 
-            let meta = BlockMetaCache {
+            let meta = BlockMeta {
                 height: block.height(),
                 block_hash: block.hash(),
                 block_time: block.time,
@@ -305,7 +305,7 @@ where
     Ok(block_meta)
 }
 
-fn delete_cached_blocks(fsblockdb_root: &Path, block_meta: Vec<BlockMetaCache>) -> JoinHandle<()> {
+fn delete_cached_blocks(fsblockdb_root: &Path, block_meta: Vec<BlockMeta>) -> JoinHandle<()> {
     let fsblockdb_root = fsblockdb_root.to_owned();
     tokio::spawn(async move {
         for meta in block_meta {
@@ -323,7 +323,7 @@ fn delete_cached_blocks(fsblockdb_root: &Path, block_meta: Vec<BlockMetaCache>) 
 fn scan_blocks<P, DbT>(
     params: &P,
     fsblockdb_root: &Path,
-    db_cache: &mut BlockCache,
+    db_cache: &mut FsBlockDb,
     db_data: &mut DbT,
     scan_range: &ScanRange,
 ) -> Result<bool, anyhow::Error>
@@ -364,7 +364,7 @@ where
             // orphaned some of those blocks.
             db_cache
                 .with_blocks(Some(rewind_height + 1), None, |block| {
-                    let meta = BlockMetaCache {
+                    let meta = BlockMeta {
                         height: block.height(),
                         block_hash: block.hash(),
                         block_time: block.time,
