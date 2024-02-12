@@ -250,7 +250,7 @@ impl AccountBalance {
 /// Data structure that can represent a row in the block metadata database.
 #[cfg(feature = "unstable")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BlockMeta {
+pub struct BlockMetaCache {
     pub height: BlockHeight,
     pub block_hash: BlockHash,
     pub block_time: u32,

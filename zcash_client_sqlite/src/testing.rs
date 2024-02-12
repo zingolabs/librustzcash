@@ -84,7 +84,7 @@ use {
         chain::{block_file_path, init::init_blockmeta_db},
         FsBlockDb,
     },
-    zcash_client_backend::data_api::BlockMeta,
+    zcash_client_backend::data_api::BlockMetaCache,
 };
 
 /// A builder for a `zcash_client_sqlite` test.
@@ -1024,7 +1024,7 @@ impl FsBlockCache {
 #[cfg(feature = "unstable")]
 impl TestCache for FsBlockCache {
     type BlockSource = FsBlockDb;
-    type InsertResult = BlockMeta;
+    type InsertResult = BlockMetaCache;
 
     fn block_source(&self) -> &Self::BlockSource {
         &self.db_meta
@@ -1033,7 +1033,7 @@ impl TestCache for FsBlockCache {
     fn insert(&self, cb: &CompactBlock) -> Self::InsertResult {
         use std::io::Write;
 
-        let meta = BlockMeta {
+        let meta = BlockMetaCache {
             height: cb.height(),
             block_hash: cb.hash(),
             block_time: cb.time,

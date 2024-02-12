@@ -83,7 +83,7 @@ use {
     crate::chain::{block_file_path, fsblockdb_with_blocks},
     std::path::PathBuf,
     std::{fs, io},
-    zcash_client_backend::data_api::BlockMeta,
+    zcash_client_backend::data_api::BlockMetaCache,
 };
 
 pub mod chain;
@@ -1007,7 +1007,10 @@ impl FsBlockDb {
     ///
     /// This will return an error if any block file corresponding to one of these metadata records
     /// is absent from the blocks directory.
-    pub fn write_block_metadata(&self, block_meta: &[BlockMeta]) -> Result<(), FsBlockDbError> {
+    pub fn write_block_metadata(
+        &self,
+        block_meta: &[BlockMetaCache],
+    ) -> Result<(), FsBlockDbError> {
         for m in block_meta {
             let block_path = block_file_path(&m, &self.blocks_dir);
             match fs::metadata(&block_path) {
@@ -1030,7 +1033,10 @@ impl FsBlockDb {
 
     /// Returns the metadata for the block with the given height, if it exists in the
     /// database.
-    pub fn find_block(&self, height: BlockHeight) -> Result<Option<BlockMeta>, FsBlockDbError> {
+    pub fn find_block(
+        &self,
+        height: BlockHeight,
+    ) -> Result<Option<BlockMetaCache>, FsBlockDbError> {
         Ok(chain::blockmetadb_find_block(&self.conn, height)?)
     }
 }

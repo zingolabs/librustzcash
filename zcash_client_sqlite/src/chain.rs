@@ -16,7 +16,7 @@ use {
     std::fs::File,
     std::io::Read,
     std::path::{Path, PathBuf},
-    zcash_client_backend::data_api::BlockMeta,
+    zcash_client_backend::data_api::BlockMetaCache,
 };
 
 pub mod init;
@@ -95,7 +95,7 @@ where
 }
 
 #[cfg(feature = "unstable")]
-pub fn block_file_path<P: AsRef<Path>>(block_meta: &BlockMeta, blocks_dir: &P) -> PathBuf {
+pub fn block_file_path<P: AsRef<Path>>(block_meta: &BlockMetaCache, blocks_dir: &P) -> PathBuf {
     blocks_dir.as_ref().join(Path::new(&format!(
         "{}-{}-compactblock",
         block_meta.height, block_meta.block_hash
@@ -106,7 +106,7 @@ pub fn block_file_path<P: AsRef<Path>>(block_meta: &BlockMeta, blocks_dir: &P) -
 #[cfg(feature = "unstable")]
 pub(crate) fn blockmetadb_insert(
     conn: &Connection,
-    block_meta: &[BlockMeta],
+    block_meta: &[BlockMetaCache],
 ) -> Result<(), rusqlite::Error> {
     use rusqlite::named_params;
 
@@ -203,7 +203,7 @@ pub(crate) fn blockmetadb_get_max_cached_height(
 pub(crate) fn blockmetadb_find_block(
     conn: &Connection,
     height: BlockHeight,
-) -> Result<Option<BlockMeta>, rusqlite::Error> {
+) -> Result<Option<BlockMetaCache>, rusqlite::Error> {
     use rusqlite::OptionalExtension;
 
     conn.query_row(
@@ -212,7 +212,7 @@ pub(crate) fn blockmetadb_find_block(
         WHERE height = ?",
         [u32::from(height)],
         |row| {
-            Ok(BlockMeta {
+            Ok(BlockMetaCache {
                 height,
                 block_hash: BlockHash::from_slice(&row.get::<_, Vec<_>>(0)?),
                 block_time: row.get(1)?,
@@ -264,7 +264,7 @@ where
                     .unwrap_or(u32::MAX)
             ],
             |row| {
-                Ok(BlockMeta {
+                Ok(BlockMetaCache {
                     height: BlockHeight::from_u32(row.get(0)?),
                     block_hash: BlockHash::from_slice(&row.get::<_, Vec<_>>(1)?),
                     block_time: row.get(2)?,
