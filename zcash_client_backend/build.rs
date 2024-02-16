@@ -45,6 +45,10 @@ fn build() -> io::Result<()> {
             "cash.z.wallet.sdk.rpc",
             r#"#[cfg(feature = "lightwalletd-tonic")]"#,
         )
+        .server_mod_attribute(
+            "cash.z.wallet.sdk.rpc",
+            r#"#[cfg(feature = "lightwalletd-tonic")]"#,
+        )
         .extern_path(
             ".cash.z.wallet.sdk.rpc.ChainMetadata",
             "crate::proto::compact_formats::ChainMetadata",
