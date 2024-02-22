@@ -91,6 +91,9 @@ percent-encoding.workspace = true
 crossbeam-channel.workspace = true
 rayon.workspace = true
 
+# - Runtime
+tokio = { version = "1.21.0", features = ["rt"] }
+
 [build-dependencies]
 tonic-build.workspace = true
 which = "4"

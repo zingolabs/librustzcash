@@ -146,6 +146,7 @@
 use std::ops::Range;
 
 use sapling::note_encryption::PreparedIncomingViewingKey;
+use tokio::task::JoinHandle;
 use zcash_primitives::{
     consensus::{self, BlockHeight},
     zip32::Scope,
@@ -160,6 +161,8 @@ use crate::{
 
 pub mod error;
 use error::Error;
+
+use super::scanning::ScanRange;
 
 /// A struct containing metadata about a subtree root of the note commitment tree.
 ///
@@ -222,8 +225,8 @@ pub trait BlockCache: BlockSource {
     fn cache_tip(&self, range: Option<&ScanRange>) -> Result<Option<BlockHeight>, Self::Error>;
 
     /// Inserts a set of compact blocks into the block cache.
-    /// TODO: MSRV needs updating to rust 1.75 to provide stable implementation of async trait
-    async fn insert(&self, compact_blocks: Vec<CompactBlock>) -> Result<(), Self::Error>;
+    /// Returns a `JoinHandle` for async implementations.
+    fn insert(&self, compact_blocks: Vec<CompactBlock>) -> JoinHandle<()>;
 
     /// Removes all cached blocks above a specified block height.
     fn truncate(&self, block_height: BlockHeight) -> Result<(), Self::Error>;
@@ -232,9 +235,8 @@ pub trait BlockCache: BlockSource {
     fn mark_as_scanned(&self, range: &ScanRange) -> Result<(), Self::Error>;
 
     /// Deletes all blocks marked as scanned from the block cache.
-    /// Returns a handle so tasks can be performed concurrently.
-    /// TODO: MSRV needs updating to rust 1.75 to provide stable implementation of async trait
-    async fn delete_scanned(&self) -> JoinHandle<()>;
+    /// Returns a `JoinHandle` for async implementations.
+    fn delete_scanned(&self) -> JoinHandle<()>;
 }
 
 /// Metadata about modifications to the wallet state made in the course of scanning a set of
