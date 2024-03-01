@@ -41,7 +41,10 @@ use zcash_primitives::{
     memo::MemoBytes,
     transaction::{
         builder::{BuildConfig, BuildResult, Builder},
-        components::amount::{Amount, NonNegativeAmount},
+        components::{
+            amount::{Amount, NonNegativeAmount},
+            OutPoint,
+        },
         fees::{zip317::FeeError as Zip317FeeError, FeeRule, StandardFeeRule},
         Transaction, TxId,
     },
@@ -66,11 +69,9 @@ use crate::{
 
 #[cfg(feature = "transparent-inputs")]
 use {
-    input_selection::ShieldingSelector,
-    std::convert::Infallible,
-    zcash_keys::encoding::AddressCodec,
-    zcash_primitives::legacy::TransparentAddress,
-    zcash_primitives::transaction::components::{OutPoint, TxOut},
+    input_selection::ShieldingSelector, std::convert::Infallible,
+    zcash_keys::encoding::AddressCodec, zcash_primitives::legacy::TransparentAddress,
+    zcash_primitives::transaction::components::TxOut,
 };
 
 pub mod input_selection;
@@ -657,6 +658,65 @@ where
     ParamsT: consensus::Parameters + Clone,
     FeeRuleT: FeeRule,
 {
+    let (build_result, account, outputs, utxos_spent) = calculate_proposed_transaction(
+        wallet_db,
+        params,
+        spend_prover,
+        output_prover,
+        usk,
+        ovk_policy,
+        fee_rule,
+        min_target_height,
+        prior_step_results,
+        proposal_step,
+    )?;
+    wallet_db
+        .store_sent_tx(&SentTransaction {
+            tx: build_result.transaction(),
+            created: time::OffsetDateTime::now_utc(),
+            account,
+            outputs,
+            fee_amount: Amount::from(proposal_step.balance().fee_required()),
+            #[cfg(feature = "transparent-inputs")]
+            utxos_spent,
+        })
+        .map_err(Error::DataSource)?;
+
+    Ok(build_result)
+}
+
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
+fn calculate_proposed_transaction<DbT, ParamsT, InputsErrT, FeeRuleT, N>(
+    wallet_db: &mut DbT,
+    params: &ParamsT,
+    spend_prover: &impl SpendProver,
+    output_prover: &impl OutputProver,
+    usk: &UnifiedSpendingKey,
+    ovk_policy: OvkPolicy,
+    fee_rule: &FeeRuleT,
+    min_target_height: BlockHeight,
+    prior_step_results: &[(&proposal::Step<N>, BuildResult)],
+    proposal_step: &proposal::Step<N>,
+) -> Result<
+    (
+        BuildResult,
+        <DbT as WalletRead>::AccountId,
+        Vec<SentTransactionOutput<<DbT as WalletRead>::AccountId>>,
+        Vec<OutPoint>,
+    ),
+    Error<
+        <DbT as WalletRead>::Error,
+        <DbT as WalletCommitmentTrees>::Error,
+        InputsErrT,
+        FeeRuleT::Error,
+    >,
+>
+where
+    DbT: WalletRead + WalletCommitmentTrees,
+    ParamsT: consensus::Parameters + Clone,
+    FeeRuleT: FeeRule,
+{
     // TODO: Spending shielded outputs of prior multi-step transaction steps is not yet
     // supported. Maybe support this at some point? Doing so would require a higher-level
     // approach in the wallet that waits for transactions with shielded outputs to be
@@ -795,6 +855,8 @@ where
         builder.add_orchard_spend(usk.orchard(), *orchard_note, merkle_path.into())?;
     }
 
+    #[cfg(not(feature = "transparent-inputs"))]
+    let utxos_spent = vec![];
     #[cfg(feature = "transparent-inputs")]
     let utxos_spent = {
         let known_addrs = wallet_db
@@ -1175,19 +1237,7 @@ where
     outputs.extend(sapling_outputs);
     outputs.extend(transparent_outputs);
 
-    wallet_db
-        .store_sent_tx(&SentTransaction {
-            tx: build_result.transaction(),
-            created: time::OffsetDateTime::now_utc(),
-            account,
-            outputs,
-            fee_amount: Amount::from(proposal_step.balance().fee_required()),
-            #[cfg(feature = "transparent-inputs")]
-            utxos_spent,
-        })
-        .map_err(Error::DataSource)?;
-
-    Ok(build_result)
+    Ok((build_result, account, outputs, utxos_spent))
 }
 
 /// Constructs a transaction that consumes available transparent UTXOs belonging to the specified
