@@ -687,7 +687,7 @@ where
 
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
-fn calculate_proposed_transaction<DbT, ParamsT, InputsErrT, FeeRuleT, N>(
+pub fn calculate_proposed_transaction<DbT, ParamsT, InputsErrT, FeeRuleT, N>(
     wallet_db: &mut DbT,
     params: &ParamsT,
     spend_prover: &impl SpendProver,
