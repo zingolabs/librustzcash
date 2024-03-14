@@ -65,7 +65,7 @@ tracing.workspace = true
 # - Protobuf interfaces and gRPC bindings
 hex.workspace = true
 prost.workspace = true
-tonic = { workspace = true, optional = true }
+tonic = { workspace = true, optional = true, features = ["prost", "codegen"]}
 
 # - Secret management
 secrecy.workspace = true
@@ -101,7 +101,7 @@ crossbeam-channel.workspace = true
 rayon.workspace = true
 
 [build-dependencies]
-tonic-build.workspace = true
+tonic-build = { workspace = true, features = ["prost"]}
 which = "4"
 
 [dev-dependencies]
