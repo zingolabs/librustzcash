@@ -1095,14 +1095,13 @@ where
     let sapling_internal_ivk =
         PreparedIncomingViewingKey::new(&sapling_dfvk.to_ivk(Scope::Internal));
 
-    let mut outputs = vec![];
     #[cfg(feature = "orchard")]
     wallet_db
         .store_sent_tx(&SentTransaction {
             tx: build_result.transaction(),
             created: time::OffsetDateTime::now_utc(),
             account,
-            outputs,
+            vec![],
             fee_amount: proposal_step.balance().fee_required(),
             #[cfg(feature = "transparent-inputs")]
             utxos_spent,
