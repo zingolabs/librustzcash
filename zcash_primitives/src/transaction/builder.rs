@@ -55,7 +55,7 @@ use super::components::sapling::zip212_enforcement;
 const DEFAULT_TX_EXPIRY_DELTA: u32 = 40;
 
 /// Errors that can occur during fee calculation.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum FeeError<FE> {
     FeeRule(FE),
     Bundle(&'static str),
@@ -71,7 +71,7 @@ impl<FE: fmt::Display> fmt::Display for FeeError<FE> {
 }
 
 /// Errors that can occur during transaction construction.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error<FE> {
     /// Insufficient funds were provided to the transaction builder; the given
     /// additional amount is required in order to construct the transaction.
