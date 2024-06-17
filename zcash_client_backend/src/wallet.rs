@@ -1,8 +1,10 @@
 //! Structs representing transaction data scanned from the block chain by a wallet or
 //! light client.
 
+use std::fmt;
+
 use incrementalmerkletree::Position;
-use zcash_keys::address::Address;
+use zcash_address::ZcashAddress;
 use zcash_note_encryption::EphemeralKeyBytes;
 use zcash_primitives::{
     consensus::BlockHeight,
@@ -19,7 +21,7 @@ use zcash_primitives::{
 };
 use zcash_protocol::value::BalanceError;
 
-use crate::{address::UnifiedAddress, fees::sapling as sapling_fees, PoolType, ShieldedProtocol};
+use crate::{fees::sapling as sapling_fees, PoolType, ShieldedProtocol};
 
 #[cfg(feature = "orchard")]
 use crate::fees::orchard as orchard_fees;
@@ -62,18 +64,28 @@ impl NoteId {
     }
 }
 
+impl fmt::Display for NoteId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "txid {} protocol {:?} output_index {}",
+            self.txid(),
+            self.protocol(),
+            self.output_index()
+        )
+    }
+}
+
 /// A type that represents the recipient of a transaction output: a recipient address (and, for
 /// unified addresses, the pool to which the payment is sent) in the case of an outgoing output, or an
 /// internal account ID and the pool to which funds were sent in the case of a wallet-internal
 /// output.
 #[derive(Debug, Clone)]
 pub enum Recipient<AccountId, N> {
-    Transparent(TransparentAddress),
-    Sapling(sapling::PaymentAddress),
-    Unified(UnifiedAddress, PoolType),
+    External(ZcashAddress, PoolType),
     InternalAccount {
         receiving_account: AccountId,
-        external_address: Option<Address>,
+        external_address: Option<ZcashAddress>,
         note: N,
     },
 }
@@ -81,9 +93,7 @@ pub enum Recipient<AccountId, N> {
 impl<AccountId, N> Recipient<AccountId, N> {
     pub fn map_internal_account_note<B, F: FnOnce(N) -> B>(self, f: F) -> Recipient<AccountId, B> {
         match self {
-            Recipient::Transparent(t) => Recipient::Transparent(t),
-            Recipient::Sapling(s) => Recipient::Sapling(s),
-            Recipient::Unified(u, p) => Recipient::Unified(u, p),
+            Recipient::External(addr, pool) => Recipient::External(addr, pool),
             Recipient::InternalAccount {
                 receiving_account,
                 external_address,
@@ -100,9 +110,7 @@ impl<AccountId, N> Recipient<AccountId, N> {
 impl<AccountId, N> Recipient<AccountId, Option<N>> {
     pub fn internal_account_note_transpose_option(self) -> Option<Recipient<AccountId, N>> {
         match self {
-            Recipient::Transparent(t) => Some(Recipient::Transparent(t)),
-            Recipient::Sapling(s) => Some(Recipient::Sapling(s)),
-            Recipient::Unified(u, p) => Some(Recipient::Unified(u, p)),
+            Recipient::External(addr, pool) => Some(Recipient::External(addr, pool)),
             Recipient::InternalAccount {
                 receiving_account,
                 external_address,

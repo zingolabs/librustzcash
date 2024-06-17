@@ -52,7 +52,7 @@ use crate::{
     fees::{self, DustOutputPolicy},
     keys::UnifiedSpendingKey,
     proposal::{self, Proposal, ProposalError},
-    wallet::{Note, OvkPolicy, Recipient},
+    wallet::{Note, OvkPolicy, Recipient, TransparentAddressMetadata},
     zip321::{self, Payment},
     PoolType, ShieldedProtocol,
 };
@@ -497,14 +497,15 @@ where
     >,
     DbT::NoteRef: Copy + Eq + Ord,
 {
-    let request = zip321::TransactionRequest::new(vec![Payment {
-        recipient_address: to.clone(),
+    let request = zip321::TransactionRequest::new(vec![Payment::new(
+        to.to_zcash_address(params),
         amount,
         memo,
-        label: None,
-        message: None,
-        other_params: vec![],
-    }])
+        None,
+        None,
+        vec![],
+    )
+    .ok_or(Error::MemoForbidden)?])
     .expect(
         "It should not be possible for this to violate ZIP 321 request construction invariants.",
     );
@@ -619,6 +620,7 @@ where
             proposal.min_target_height(),
             &step_results,
             step,
+            None,
         )?;
         step_results.push((step, step_result));
     }
@@ -646,6 +648,9 @@ pub fn calculate_proposed_transaction<DbT, ParamsT, InputsErrT, FeeRuleT, N>(
     min_target_height: BlockHeight,
     prior_step_results: &[(&proposal::Step<N>, BuildResult)],
     proposal_step: &proposal::Step<N>,
+    usk_to_tkey: Option<
+        fn(&UnifiedSpendingKey, &TransparentAddressMetadata) -> hdwallet::secp256k1::SecretKey,
+    >,
 ) -> Result<
     BuildResult,
     Error<
@@ -824,10 +829,16 @@ where
                 .clone()
                 .ok_or_else(|| Error::NoSpendingKey(addr.encode(params)))?;
 
-            let secret_key = usk
-                .transparent()
-                .derive_secret_key(address_metadata.scope(), address_metadata.address_index())
-                .unwrap();
+            let secret_key = usk_to_tkey
+                .map(|f| f(usk, &address_metadata))
+                .unwrap_or_else(|| {
+                    usk.transparent()
+                        .derive_secret_key(
+                            address_metadata.scope(),
+                            address_metadata.address_index(),
+                        )
+                        .unwrap()
+                });
 
             utxos_spent.push(outpoint.clone());
             builder.add_transparent_input(secret_key, outpoint, utxo)?;
@@ -850,13 +861,16 @@ where
                     // the transaction in payment index order, so we can use dead reckoning to
                     // figure out which output it ended up being.
                     let (prior_step, result) = &prior_step_results[input_ref.step_index()];
-                    let recipient_address = match &prior_step
+                    let recipient_address = &prior_step
                         .transaction_request()
                         .payments()
                         .get(&i)
                         .expect("Payment step references are checked at construction")
-                        .recipient_address
-                    {
+                        .recipient_address()
+                        .clone()
+                        .convert_if_network(params.network_type())?;
+
+                    let recipient_taddr = match recipient_address {
                         Address::Transparent(t) => Some(t),
                         Address::Unified(uaddr) => uaddr.transparent(),
                         _ => None,
@@ -881,7 +895,7 @@ where
                         .ok_or(Error::Proposal(ProposalError::ReferenceError(*input_ref)))?
                         .vout[outpoint.n() as usize];
 
-                    add_transparent_input(recipient_address, outpoint, utxo.clone())?;
+                    add_transparent_input(recipient_taddr, outpoint, utxo.clone())?;
                 }
                 proposal::StepOutputIndex::Change(_) => unreachable!(),
             }
@@ -951,12 +965,14 @@ where
             (payment, output_pool)
         })
     {
-        match &payment.recipient_address {
+        let recipient_address: Address = payment
+            .recipient_address()
+            .clone()
+            .convert_if_network(params.network_type())?;
+
+        match recipient_address {
             Address::Unified(ua) => {
-                let memo = payment
-                    .memo
-                    .as_ref()
-                    .map_or_else(MemoBytes::empty, |m| m.clone());
+                let memo = payment.memo().map_or_else(MemoBytes::empty, |m| m.clone());
 
                 match output_pool {
                     #[cfg(not(feature = "orchard"))]
@@ -968,7 +984,7 @@ where
                         builder.add_orchard_output(
                             orchard_external_ovk.clone(),
                             *ua.orchard().expect("The mapping between payment pool and receiver is checked in step construction"),
-                            payment.amount.into(),
+                            payment.amount().into(),
                             memo.clone(),
                         )?;
                     }
@@ -977,40 +993,37 @@ where
                         builder.add_sapling_output(
                             sapling_external_ovk,
                             *ua.sapling().expect("The mapping between payment pool and receiver is checked in step construction"),
-                            payment.amount,
+                            payment.amount(),
                             memo.clone(),
                         )?;
                     }
 
                     PoolType::Transparent => {
-                        if payment.memo.is_some() {
+                        if payment.memo().is_some() {
                             return Err(Error::MemoForbidden);
                         } else {
                             builder.add_transparent_output(
                                 ua.transparent().expect("The mapping between payment pool and receiver is checked in step construction."),
-                                payment.amount
+                                payment.amount()
                             )?;
                         }
                     }
                 }
             }
             Address::Sapling(addr) => {
-                let memo = payment
-                    .memo
-                    .as_ref()
-                    .map_or_else(MemoBytes::empty, |m| m.clone());
+                let memo = payment.memo().map_or_else(MemoBytes::empty, |m| m.clone());
                 builder.add_sapling_output(
                     sapling_external_ovk,
-                    *addr,
-                    payment.amount,
+                    addr,
+                    payment.amount(),
                     memo.clone(),
                 )?;
             }
             Address::Transparent(to) => {
-                if payment.memo.is_some() {
+                if payment.memo().is_some() {
                     return Err(Error::MemoForbidden);
                 } else {
-                    builder.add_transparent_output(to, payment.amount)?;
+                    builder.add_transparent_output(&to, payment.amount())?;
                 }
             }
         }

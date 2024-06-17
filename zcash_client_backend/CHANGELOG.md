@@ -5,7 +5,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this library adheres to Rust's notion of
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Zingo]
+- replace create_proposed_transaction with `calculate_proposed_transaction`
+  - dont try to write the calculated transaction to wallet, that will be handled later
+  - ignore collecting any transaction metadata
+  - handle usk differently
+- modify change algorithm
+- added display for NoteId
+
+### Added
+- `zcash_client_backend::data_api`:
+  - `chain::BlockCache` trait, behind the `sync` feature flag.
+- `zcash_client_backend::scanning`:
+  - `testing` module
+- `zcash_client_backend::sync` module, behind the `sync` feature flag.
+
+### Changed
+- MSRV is now 1.70.0.
+- `zcash_client_backend::zip321` has been extracted to, and is now a reexport 
+  of the root module of the `zip321` crate. Several of the APIs of this module
+  have changed as a consequence of this extraction; please see the `zip321`
+  CHANGELOG for details.
+- `zcash_client_backend::data_api`:
+  - `error::Error` has a new `Address` variant.
+  - `wallet::input_selection::InputSelectorError` has a new `Address` variant.
+- `zcash_client_backend::proto::proposal::Proposal::{from_standard_proposal, 
+  try_into_standard_proposal}` each no longer require a `consensus::Parameters` 
+  argument.
+- `zcash_client_backend::wallet::Recipient` variants have changed. Instead of
+  wrapping protocol-address types, the `Recipient` type now wraps a
+  `zcash_address::ZcashAddress`. This simplifies the process of tracking the
+  original address to which value was sent.
 
 ## [0.12.1] - 2024-03-27
 

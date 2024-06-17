@@ -65,7 +65,7 @@
 //! - `memo` the shielded memo associated with the output, if any.
 
 use incrementalmerkletree::Retention;
-use rusqlite::{self, named_params, params, OptionalExtension};
+use rusqlite::{self, named_params, OptionalExtension};
 use secrecy::{ExposeSecret, SecretVec};
 use shardtree::{error::ShardTreeError, store::ShardStore, ShardTree};
 use zip32::fingerprint::SeedFingerprint;
@@ -76,12 +76,9 @@ use std::io::{self, Cursor};
 use std::num::NonZeroU32;
 use std::ops::RangeInclusive;
 use tracing::debug;
-use zcash_keys::keys::{
-    AddressGenerationError, UnifiedAddressRequest, UnifiedIncomingViewingKey, UnifiedSpendingKey,
-};
 
+use zcash_address::ZcashAddress;
 use zcash_client_backend::{
-    address::{Address, UnifiedAddress},
     data_api::{
         scanning::{ScanPriority, ScanRange},
         AccountBalance, AccountBirthday, AccountSource, BlockMetadata, Ratio,
@@ -92,6 +89,13 @@ use zcash_client_backend::{
     wallet::{Note, NoteId, Recipient, WalletTx},
     PoolType, ShieldedProtocol,
 };
+use zcash_keys::{
+    address::{Address, Receiver, UnifiedAddress},
+    keys::{
+        AddressGenerationError, UnifiedAddressRequest, UnifiedIncomingViewingKey,
+        UnifiedSpendingKey,
+    },
+};
 use zcash_primitives::{
     block::BlockHash,
     consensus::{self, BlockHeight, BranchId, NetworkUpgrade, Parameters},
@@ -101,8 +105,8 @@ use zcash_primitives::{
         components::{amount::NonNegativeAmount, Amount},
         Transaction, TransactionData, TxId,
     },
-    zip32::{self, DiversifierIndex, Scope},
 };
+use zip32::{self, DiversifierIndex, Scope};
 
 use crate::{
     error::SqliteClientError,
@@ -1591,7 +1595,7 @@ pub(crate) fn account_birthday(
     conn.query_row(
         "SELECT birthday_height
          FROM accounts
-         WHERE account = :account_id",
+         WHERE id = :account_id",
         named_params![":account_id": account.0],
         |row| row.get::<_, u32>(0).map(BlockHeight::from),
     )
@@ -1623,10 +1627,10 @@ pub(crate) fn get_account<P: Parameters>(
         SELECT account_kind, hd_seed_fingerprint, hd_account_index, ufvk, uivk
         FROM accounts
         WHERE id = :account_id
-    "#,
+        "#,
     )?;
 
-    let mut result = sql.query(params![account_id.0])?;
+    let mut result = sql.query(named_params![":account_id": account_id.0])?;
     let row = result.next()?;
     match row {
         Some(row) => {
@@ -2077,17 +2081,17 @@ pub(crate) fn truncate_to_height<P: consensus::Parameters>(
 
 #[cfg(feature = "transparent-inputs")]
 fn to_unspent_transparent_output(row: &Row) -> Result<WalletTransparentOutput, SqliteClientError> {
-    let txid: Vec<u8> = row.get(0)?;
+    let txid: Vec<u8> = row.get("prevout_txid")?;
     let mut txid_bytes = [0u8; 32];
     txid_bytes.copy_from_slice(&txid);
 
-    let index: u32 = row.get(1)?;
-    let script_pubkey = Script(row.get(2)?);
-    let raw_value: i64 = row.get(3)?;
+    let index: u32 = row.get("prevout_idx")?;
+    let script_pubkey = Script(row.get("script")?);
+    let raw_value: i64 = row.get("value_zat")?;
     let value = NonNegativeAmount::from_nonnegative_i64(raw_value).map_err(|_| {
         SqliteClientError::CorruptedData(format!("Invalid UTXO value: {}", raw_value))
     })?;
-    let height: u32 = row.get(4)?;
+    let height: u32 = row.get("height")?;
 
     let outpoint = OutPoint::new(txid_bytes, index);
     WalletTransparentOutput::from_parts(
@@ -2366,6 +2370,48 @@ pub(crate) fn put_tx_meta(
         .map_err(SqliteClientError::from)
 }
 
+/// Returns the most likely wallet address that corresponds to the protocol-level receiver of a
+/// note or UTXO.
+pub(crate) fn select_receiving_address<P: consensus::Parameters>(
+    _params: &P,
+    conn: &rusqlite::Connection,
+    account: AccountId,
+    receiver: &Receiver,
+) -> Result<Option<ZcashAddress>, SqliteClientError> {
+    match receiver {
+        #[cfg(feature = "transparent-inputs")]
+        Receiver::Transparent(taddr) => conn
+            .query_row(
+                "SELECT address
+                 FROM addresses
+                 WHERE cached_transparent_receiver_address = :taddr",
+                named_params! {
+                    ":taddr": Address::Transparent(*taddr).encode(_params)
+                },
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .map(|addr_str| addr_str.parse::<ZcashAddress>())
+            .transpose()
+            .map_err(SqliteClientError::from),
+        receiver => {
+            let mut stmt =
+                conn.prepare_cached("SELECT address FROM addresses WHERE account_id = :account")?;
+
+            let mut result = stmt.query(named_params! { ":account": account.0 })?;
+            while let Some(row) = result.next()? {
+                let addr_str = row.get::<_, String>(0)?;
+                let decoded = addr_str.parse::<ZcashAddress>()?;
+                if receiver.corresponds(&decoded) {
+                    return Ok(Some(decoded));
+                }
+            }
+
+            Ok(None)
+        }
+    }
+}
+
 /// Inserts full transaction data into the database.
 pub(crate) fn put_tx_data(
     conn: &rusqlite::Connection,
@@ -2515,24 +2561,17 @@ pub(crate) fn put_legacy_transparent_utxo<P: consensus::Parameters>(
 
 // A utility function for creation of parameters for use in `insert_sent_output`
 // and `put_sent_output`
-fn recipient_params<P: consensus::Parameters>(
-    params: &P,
+fn recipient_params(
     to: &Recipient<AccountId, Note>,
 ) -> (Option<String>, Option<AccountId>, PoolType) {
     match to {
-        Recipient::Transparent(addr) => (Some(addr.encode(params)), None, PoolType::Transparent),
-        Recipient::Sapling(addr) => (
-            Some(addr.encode(params)),
-            None,
-            PoolType::Shielded(ShieldedProtocol::Sapling),
-        ),
-        Recipient::Unified(addr, pool) => (Some(addr.encode(params)), None, *pool),
+        Recipient::External(addr, pool) => (Some(addr.encode()), None, *pool),
         Recipient::InternalAccount {
             receiving_account,
             external_address,
             note,
         } => (
-            external_address.as_ref().map(|a| a.encode(params)),
+            external_address.as_ref().map(|a| a.encode()),
             Some(*receiving_account),
             PoolType::Shielded(note.protocol()),
         ),
@@ -2540,9 +2579,8 @@ fn recipient_params<P: consensus::Parameters>(
 }
 
 /// Records information about a transaction output that your wallet created.
-pub(crate) fn insert_sent_output<P: consensus::Parameters>(
+pub(crate) fn insert_sent_output(
     conn: &rusqlite::Connection,
-    params: &P,
     tx_ref: i64,
     from_account: AccountId,
     output: &SentTransactionOutput<AccountId>,
@@ -2556,7 +2594,7 @@ pub(crate) fn insert_sent_output<P: consensus::Parameters>(
             :to_address, :to_account_id, :value, :memo)",
     )?;
 
-    let (to_address, to_account_id, pool_type) = recipient_params(params, output.recipient());
+    let (to_address, to_account_id, pool_type) = recipient_params(output.recipient());
     let sql_args = named_params![
         ":tx": &tx_ref,
         ":output_pool": &pool_code(pool_type),
@@ -2585,9 +2623,8 @@ pub(crate) fn insert_sent_output<P: consensus::Parameters>(
 /// - If `recipient` is an internal account, `output_index` is an index into the Sapling outputs of
 ///   the transaction.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn put_sent_output<P: consensus::Parameters>(
+pub(crate) fn put_sent_output(
     conn: &rusqlite::Connection,
-    params: &P,
     from_account: AccountId,
     tx_ref: i64,
     output_index: usize,
@@ -2610,7 +2647,7 @@ pub(crate) fn put_sent_output<P: consensus::Parameters>(
             memo = IFNULL(:memo, memo)",
     )?;
 
-    let (to_address, to_account_id, pool_type) = recipient_params(params, recipient);
+    let (to_address, to_account_id, pool_type) = recipient_params(recipient);
     let sql_args = named_params![
         ":tx": &tx_ref,
         ":output_pool": &pool_code(pool_type),
@@ -2722,7 +2759,7 @@ pub(crate) fn insert_nullifier_map<N: AsRef<[u8]>>(
 
 /// Returns the row of the `transactions` table corresponding to the transaction in which
 /// this nullifier is revealed, if any.
-pub(crate) fn query_nullifier_map<N: AsRef<[u8]>, S>(
+pub(crate) fn query_nullifier_map<N: AsRef<[u8]>>(
     conn: &rusqlite::Transaction<'_>,
     spend_pool: ShieldedProtocol,
     nf: &N,
@@ -2796,6 +2833,7 @@ mod tests {
     use std::num::NonZeroU32;
 
     use sapling::zip32::ExtendedSpendingKey;
+    use secrecy::{ExposeSecret, SecretVec};
     use zcash_client_backend::data_api::{AccountSource, WalletRead};
     use zcash_primitives::{block::BlockHash, transaction::components::amount::NonNegativeAmount};
 
@@ -2803,6 +2841,8 @@ mod tests {
         testing::{AddressType, BlockCache, TestBuilder, TestState},
         AccountId,
     };
+
+    use super::account_birthday;
 
     #[cfg(feature = "transparent-inputs")]
     use {
@@ -2899,7 +2939,7 @@ mod tests {
                 height_1,
                 &[]
             ).as_deref(),
-            Ok(&[ref ret]) if (ret.outpoint(), ret.txout(), ret.height()) == (utxo.outpoint(), utxo.txout(), height_1)
+            Ok([ret]) if (ret.outpoint(), ret.txout(), ret.height()) == (utxo.outpoint(), utxo.txout(), height_1)
         );
         assert_matches!(
             st.wallet().get_unspent_transparent_output(utxo.outpoint()),
@@ -2932,7 +2972,7 @@ mod tests {
             st.wallet()
                 .get_unspent_transparent_outputs(taddr, height_2, &[])
                 .as_deref(),
-            Ok(&[ref ret]) if (ret.outpoint(), ret.txout(), ret.height()) == (utxo.outpoint(), utxo.txout(), height_2)
+            Ok([ret]) if (ret.outpoint(), ret.txout(), ret.height()) == (utxo.outpoint(), utxo.txout(), height_2)
         );
 
         assert_matches!(
@@ -2969,6 +3009,25 @@ mod tests {
             account_parameters.kind,
             AccountSource::Derived{account_index, ..} if account_index == expected_account_index
         );
+    }
+
+    #[test]
+    fn get_account_ids() {
+        use crate::testing::TestBuilder;
+        use zcash_client_backend::data_api::WalletWrite;
+
+        let mut st = TestBuilder::new()
+            .with_account_from_sapling_activation(BlockHash([0; 32]))
+            .build();
+
+        let seed = SecretVec::new(st.test_seed().unwrap().expose_secret().clone());
+        let birthday = st.test_account().unwrap().birthday().clone();
+
+        st.wallet_mut().create_account(&seed, &birthday).unwrap();
+
+        for acct_id in st.wallet().get_account_ids().unwrap() {
+            assert_matches!(st.wallet().get_account(acct_id), Ok(Some(_)))
+        }
     }
 
     #[test]
@@ -3180,5 +3239,19 @@ mod tests {
         // The fully-scanned height should now be the latest block, as the two disjoint
         // ranges have been connected.
         assert_eq!(block_fully_scanned(&st), Some(end_height));
+    }
+
+    #[test]
+    fn test_account_birthday() {
+        let st = TestBuilder::new()
+            .with_block_cache()
+            .with_account_from_sapling_activation(BlockHash([0; 32]))
+            .build();
+
+        let account_id = st.test_account().unwrap().account_id();
+        assert_matches!(
+            account_birthday(&st.wallet().conn, account_id),
+            Ok(birthday) if birthday == st.sapling_activation_height()
+        )
     }
 }
