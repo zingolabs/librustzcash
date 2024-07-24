@@ -620,7 +620,6 @@ where
             &step_results,
             step,
             None,
-            None,
         )?;
         step_results.push((step, step_result));
     }
@@ -648,9 +647,6 @@ pub fn calculate_proposed_transaction<DbT, ParamsT, InputsErrT, FeeRuleT, N>(
     min_target_height: BlockHeight,
     prior_step_results: &[(&proposal::Step<N>, BuildResult)],
     proposal_step: &proposal::Step<N>,
-    usk_to_tkey: Option<
-        fn(&UnifiedSpendingKey, &TransparentAddressMetadata) -> hdwallet::secp256k1::SecretKey,
-    >,
     override_sapling_change_address: Option<sapling::PaymentAddress>,
 ) -> Result<
     BuildResult,
@@ -830,16 +826,10 @@ where
                 .clone()
                 .ok_or_else(|| Error::NoSpendingKey(addr.encode(params)))?;
 
-            let secret_key = usk_to_tkey
-                .map(|f| f(usk, &address_metadata))
-                .unwrap_or_else(|| {
-                    usk.transparent()
-                        .derive_secret_key(
-                            address_metadata.scope(),
-                            address_metadata.address_index(),
-                        )
-                        .unwrap()
-                });
+            let secret_key = usk
+                .transparent()
+                .derive_secret_key(address_metadata.scope(), address_metadata.address_index())
+                .unwrap();
 
             utxos_spent.push(outpoint.clone());
             builder.add_transparent_input(secret_key, outpoint, utxo)?;
