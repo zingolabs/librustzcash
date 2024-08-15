@@ -67,6 +67,7 @@ tracing.workspace = true
 hex.workspace = true
 prost.workspace = true
 tonic = { workspace = true, optional = true, features = ["prost", "codegen"]}
+async-trait = "0.1.81"
 
 # - Secret management
 secrecy.workspace = true
