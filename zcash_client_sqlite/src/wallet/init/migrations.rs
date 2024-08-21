@@ -79,10 +79,6 @@ pub(super) fn all_migrations<P: consensus::Parameters + 'static>(
     //              ------------------------------ tx_retrieval_queue ----------------------------
     //                                                     |
     //                                            support_legacy_sqlite
-    //                                                     |
-    //                                         fix_broken_commitment_trees
-    //                                                     |
-    //                                          fix_bad_change_flagging
     vec![
         Box::new(initial_setup::Migration {}),
         Box::new(utxos_table::Migration {}),
@@ -141,10 +137,6 @@ pub(super) fn all_migrations<P: consensus::Parameters + 'static>(
             params: params.clone(),
         }),
         Box::new(support_legacy_sqlite::Migration),
-        Box::new(fix_broken_commitment_trees::Migration {
-            params: params.clone(),
-        }),
-        Box::new(fix_bad_change_flagging::Migration),
     ]
 }
 

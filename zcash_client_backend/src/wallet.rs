@@ -1,6 +1,8 @@
 //! Structs representing transaction data scanned from the block chain by a wallet or
 //! light client.
 
+use std::fmt;
+
 use incrementalmerkletree::Position;
 use zcash_address::ZcashAddress;
 use zcash_note_encryption::EphemeralKeyBytes;
@@ -62,6 +64,17 @@ impl NoteId {
     }
 }
 
+impl fmt::Display for NoteId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "txid {} protocol {:?} output_index {}",
+            self.txid(),
+            self.protocol(),
+            self.output_index()
+        )
+    }
+}
 /// A type that represents the recipient of a transaction output:
 /// * a recipient address;
 /// * for external unified addresses, the pool to which the payment is sent;
