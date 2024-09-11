@@ -52,7 +52,7 @@ use crate::{
     fees::{self, DustOutputPolicy},
     keys::UnifiedSpendingKey,
     proposal::{self, Proposal, ProposalError},
-    wallet::{Note, OvkPolicy, Recipient},
+    wallet::{Note, OvkPolicy, Recipient, TransparentAddressMetadata},
     zip321::{self, Payment},
     PoolType, ShieldedProtocol,
 };
