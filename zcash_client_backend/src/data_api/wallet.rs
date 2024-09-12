@@ -776,15 +776,15 @@ where
                     change_value.value(),
                     memo.clone(),
                 )?;
-                sapling_output_meta.push((
-                    Recipient::InternalAccount {
-                        receiving_account: account,
-                        external_address: None,
-                        note: PoolType::Shielded(ShieldedProtocol::Sapling),
-                    },
-                    change_value.value(),
-                    Some(memo),
-                ))
+                // sapling_output_meta.push((
+                //     Recipient::InternalAccount {
+                //         receiving_account: account,
+                //         external_address: None,
+                //         note: PoolType::Shielded(ShieldedProtocol::Sapling),
+                //     },
+                //     change_value.value(),
+                //     Some(memo),
+                // ))
             }
             ShieldedProtocol::Orchard => {
                 #[cfg(not(feature = "orchard"))]
@@ -800,15 +800,15 @@ where
                         change_value.value().into(),
                         memo.clone(),
                     )?;
-                    orchard_output_meta.push((
-                        Recipient::InternalAccount {
-                            receiving_account: account,
-                            external_address: None,
-                            note: PoolType::Shielded(ShieldedProtocol::Orchard),
-                        },
-                        change_value.value(),
-                        Some(memo),
-                    ))
+                    // orchard_output_meta.push((
+                    //     Recipient::InternalAccount {
+                    //         receiving_account: account,
+                    //         external_address: None,
+                    //         note: PoolType::Shielded(ShieldedProtocol::Orchard),
+                    //     },
+                    //     change_value.value(),
+                    //     Some(memo),
+                    // ))
                 }
             }
         }
