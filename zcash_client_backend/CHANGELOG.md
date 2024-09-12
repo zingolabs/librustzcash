@@ -10,7 +10,8 @@ and this library adheres to Rust's notion of
   - dont try to write the calculated transaction to wallet, that will be handled later
   - ignore collecting any transaction metadata
   - handle usk differently
-- modify change algorithm
+- override sapling change address
+- use External Orchard change address
 - added display for NoteId
 
 ## [0.12.1] - 2024-03-27
