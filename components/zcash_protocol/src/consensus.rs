@@ -103,15 +103,7 @@ impl Add<u32> for BlockHeight {
     type Output = Self;
 
     fn add(self, other: u32) -> Self {
-        BlockHeight(self.0 + other)
-    }
-}
-
-impl Add for BlockHeight {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self {
-        self + other.0
+        BlockHeight(self.0.saturating_add(other))
     }
 }
 
@@ -119,19 +111,15 @@ impl Sub<u32> for BlockHeight {
     type Output = Self;
 
     fn sub(self, other: u32) -> Self {
-        if other > self.0 {
-            panic!("Subtraction resulted in negative block height.");
-        }
-
-        BlockHeight(self.0 - other)
+        BlockHeight(self.0.saturating_sub(other))
     }
 }
 
-impl Sub for BlockHeight {
-    type Output = Self;
+impl Sub<BlockHeight> for BlockHeight {
+    type Output = u32;
 
-    fn sub(self, other: Self) -> Self {
-        self - other.0
+    fn sub(self, other: BlockHeight) -> u32 {
+        self.0.saturating_sub(other.0)
     }
 }
 
@@ -354,7 +342,7 @@ impl Parameters for MainNetwork {
             NetworkUpgrade::Heartwood => Some(BlockHeight(903_000)),
             NetworkUpgrade::Canopy => Some(BlockHeight(1_046_400)),
             NetworkUpgrade::Nu5 => Some(BlockHeight(1_687_104)),
-            NetworkUpgrade::Nu6 => None,
+            NetworkUpgrade::Nu6 => Some(BlockHeight(2_726_400)),
             #[cfg(zcash_unstable = "zfuture")]
             NetworkUpgrade::ZFuture => None,
         }
@@ -383,7 +371,7 @@ impl Parameters for TestNetwork {
             NetworkUpgrade::Heartwood => Some(BlockHeight(903_800)),
             NetworkUpgrade::Canopy => Some(BlockHeight(1_028_500)),
             NetworkUpgrade::Nu5 => Some(BlockHeight(1_842_420)),
-            NetworkUpgrade::Nu6 => None,
+            NetworkUpgrade::Nu6 => Some(BlockHeight(2_976_000)),
             #[cfg(zcash_unstable = "zfuture")]
             NetworkUpgrade::ZFuture => None,
         }
@@ -707,7 +695,7 @@ pub mod testing {
     }
 
     #[cfg(feature = "test-dependencies")]
-    impl incrementalmerkletree::testing::TestCheckpoint for BlockHeight {
+    impl incrementalmerkletree_testing::TestCheckpoint for BlockHeight {
         fn from_u64(value: u64) -> Self {
             BlockHeight(u32::try_from(value).expect("Test checkpoint ids do not exceed 32 bits"))
         }
@@ -781,8 +769,16 @@ mod tests {
             BranchId::Nu5,
         );
         assert_eq!(
-            BranchId::for_height(&MAIN_NETWORK, BlockHeight(5_000_000)),
+            BranchId::for_height(&MAIN_NETWORK, BlockHeight(2_726_399)),
             BranchId::Nu5,
+        );
+        assert_eq!(
+            BranchId::for_height(&MAIN_NETWORK, BlockHeight(2_726_400)),
+            BranchId::Nu6,
+        );
+        assert_eq!(
+            BranchId::for_height(&MAIN_NETWORK, BlockHeight(5_000_000)),
+            BranchId::Nu6,
         );
     }
 }
