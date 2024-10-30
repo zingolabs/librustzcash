@@ -7,6 +7,14 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.6.0] - 2024-10-02
+### Changed
+- Migrated to `zcash_protocol 0.4`.
+
+## [0.5.0] - 2024-08-26
+### Changed
+- Updated `zcash_protocol` dependency to version `0.3`
+
 ## [0.4.0] - 2024-08-19
 ### Added
 - `zcash_address::ZcashAddress::{can_receive_memo, can_receive_as, matches_receiver}`

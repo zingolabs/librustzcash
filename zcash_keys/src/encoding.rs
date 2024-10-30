@@ -16,6 +16,7 @@ use {
     bech32::{self, Error, FromBase32, ToBase32, Variant},
     sapling::zip32::{ExtendedFullViewingKey, ExtendedSpendingKey},
     std::io::{self, Write},
+    zcash_primitives::consensus::NetworkType,
 };
 
 #[cfg(feature = "sapling")]
@@ -62,6 +63,16 @@ impl fmt::Display for Bech32DecodeError {
                 "Key was encoded for a different network: expected {}, got {}.",
                 expected, actual
             ),
+        }
+    }
+}
+
+#[cfg(feature = "sapling")]
+impl std::error::Error for Bech32DecodeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self {
+            Bech32DecodeError::Bech32Error(e) => Some(e),
+            _ => None,
         }
     }
 }
@@ -245,15 +256,47 @@ pub fn encode_extended_full_viewing_key(hrp: &str, extfvk: &ExtendedFullViewingK
     bech32_encode(hrp, |w| extfvk.write(w))
 }
 
-/// Decodes an [`ExtendedFullViewingKey`] from a Bech32-encoded string.
-///
-/// [`ExtendedFullViewingKey`]: sapling::zip32::ExtendedFullViewingKey
+/// Decodes an [`ExtendedFullViewingKey`] from a Bech32-encoded string, verifying that it matches
+/// the provided human-readable prefix.
 #[cfg(feature = "sapling")]
 pub fn decode_extended_full_viewing_key(
     hrp: &str,
     s: &str,
 ) -> Result<ExtendedFullViewingKey, Bech32DecodeError> {
     bech32_decode(hrp, s, |data| ExtendedFullViewingKey::read(&data[..]).ok())
+}
+
+/// Decodes an [`ExtendedFullViewingKey`] and the [`NetworkType`] that it is intended for use with
+/// from a Bech32-encoded string.
+#[cfg(feature = "sapling")]
+pub fn decode_extfvk_with_network(
+    s: &str,
+) -> Result<(NetworkType, ExtendedFullViewingKey), Bech32DecodeError> {
+    use zcash_protocol::constants::{mainnet, regtest, testnet};
+
+    let (decoded_hrp, data, variant) = bech32::decode(s)?;
+    if variant != Variant::Bech32 {
+        Err(Bech32DecodeError::IncorrectVariant(variant))
+    } else {
+        let network = match &decoded_hrp[..] {
+            mainnet::HRP_SAPLING_EXTENDED_FULL_VIEWING_KEY => Ok(NetworkType::Main),
+            testnet::HRP_SAPLING_EXTENDED_FULL_VIEWING_KEY => Ok(NetworkType::Test),
+            regtest::HRP_SAPLING_EXTENDED_FULL_VIEWING_KEY => Ok(NetworkType::Regtest),
+            other => Err(Bech32DecodeError::HrpMismatch {
+                expected: format!(
+                    "One of {}, {}, or {}",
+                    mainnet::HRP_SAPLING_EXTENDED_FULL_VIEWING_KEY,
+                    testnet::HRP_SAPLING_EXTENDED_FULL_VIEWING_KEY,
+                    regtest::HRP_SAPLING_EXTENDED_FULL_VIEWING_KEY,
+                ),
+                actual: other.to_string(),
+            }),
+        }?;
+        let fvk = ExtendedFullViewingKey::read(&Vec::<u8>::from_base32(&data)?[..])
+            .map_err(|_| Bech32DecodeError::ReadError)?;
+
+        Ok((network, fvk))
+    }
 }
 
 /// Writes a [`PaymentAddress`] as a Bech32-encoded string.
