@@ -154,7 +154,7 @@ pub struct ZcashAddress {
 
 /// Known kinds of Zcash addresses.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-enum AddressKind {
+pub enum AddressKind {
     Sprout([u8; 64]),
     Sapling([u8; 43]),
     Unified(unified::Address),
@@ -163,7 +163,21 @@ enum AddressKind {
     Tex([u8; 20]),
 }
 
+impl AddressKind {
+    pub fn get_unified_address(&self) -> Option<unified::Address> {
+        if let AddressKind::Unified(ua) = self {
+            Some(ua.clone())
+        } else {
+            None
+        }
+    }
+}
+
 impl ZcashAddress {
+    pub fn kind(&self) -> &AddressKind {
+        &self.kind
+    }
+
     /// Encodes this Zcash address in its canonical string representation.
     ///
     /// This provides the encoded string representation of the address as defined by the

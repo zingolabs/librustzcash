@@ -140,8 +140,19 @@ pub type ProposeShieldingErrT<DbT, CommitmentTreeErrT, InputsT, ChangeT> = Error
     Infallible,
 >;
 
-/// Errors that may be generated in combined creation and execution of transaction proposals.
-pub type CreateErrT<DbT, InputsErrT, FeeRuleT, ChangeErrT, N> = Error<
+    create_proposed_transactions(
+        wallet_db,
+        params,
+        spend_prover,
+        output_prover,
+        usk,
+        ovk_policy,
+        &proposal,
+        None,
+    )
+}
+
+type ErrorT<DbT, InputsErrT, FeeRuleT> = Error<
     <DbT as WalletRead>::Error,
     <DbT as WalletCommitmentTrees>::Error,
     InputsErrT,
@@ -160,16 +171,26 @@ pub type TransferErrT<DbT, InputsT, ChangeT> = Error<
     <<InputsT as InputSelector>::InputSource as InputSource>::NoteRef,
 >;
 
-/// Errors that may be generated in the execution of shielding proposals.
-#[cfg(feature = "transparent-inputs")]
-pub type ShieldErrT<DbT, InputsT, ChangeT> = Error<
-    <DbT as WalletRead>::Error,
-    <DbT as WalletCommitmentTrees>::Error,
-    <InputsT as ShieldingSelector>::Error,
-    <<ChangeT as ChangeStrategy>::FeeRule as FeeRule>::Error,
-    <ChangeT as ChangeStrategy>::Error,
-    Infallible,
->;
+    let proposal = propose_transfer(
+        wallet_db,
+        params,
+        account.id(),
+        input_selector,
+        request,
+        min_confirmations,
+    )?;
+
+    create_proposed_transactions(
+        wallet_db,
+        params,
+        spend_prover,
+        output_prover,
+        usk,
+        ovk_policy,
+        &proposal,
+        None,
+    )
+}
 
 /// Select transaction inputs, compute fees, and construct a proposal for a transaction or series
 /// of transactions that can then be authorized and made ready for submission to the network with
@@ -373,7 +394,8 @@ pub fn create_proposed_transactions<DbT, ParamsT, InputsErrT, FeeRuleT, ChangeEr
     usk: &UnifiedSpendingKey,
     ovk_policy: OvkPolicy,
     proposal: &Proposal<FeeRuleT, N>,
-) -> Result<NonEmpty<TxId>, CreateErrT<DbT, InputsErrT, FeeRuleT, ChangeErrT, N>>
+    override_sapling_change_address: Option<sapling::PaymentAddress>,
+) -> Result<NonEmpty<TxId>, ErrorT<DbT, InputsErrT, FeeRuleT>>
 where
     DbT: WalletWrite + WalletCommitmentTrees,
     ParamsT: consensus::Parameters + Clone,
@@ -407,6 +429,7 @@ where
             step,
             #[cfg(feature = "transparent-inputs")]
             &mut unused_transparent_outputs,
+            override_sapling_change_address,
         )?;
         step_results.push((step, step_result));
     }
@@ -473,10 +496,8 @@ fn create_proposed_transaction<DbT, ParamsT, InputsErrT, FeeRuleT, ChangeErrT, N
         StepOutput,
         (TransparentAddress, OutPoint),
     >,
-) -> Result<
-    StepResult<<DbT as WalletRead>::AccountId>,
-    CreateErrT<DbT, InputsErrT, FeeRuleT, ChangeErrT, N>,
->
+    override_sapling_change_address: Option<sapling::PaymentAddress>,
+) -> Result<StepResult<<DbT as WalletRead>::AccountId>, ErrorT<DbT, InputsErrT, FeeRuleT>>
 where
     DbT: WalletWrite + WalletCommitmentTrees,
     ParamsT: consensus::Parameters + Clone,
@@ -683,9 +704,8 @@ where
                 utxos_spent.push(outpoint.clone());
                 builder.add_transparent_input(secret_key, outpoint, txout)?;
 
-                Ok(())
-            };
-
+            Ok(())
+        };
         for utxo in proposal_step.transparent_inputs() {
             add_transparent_input(
                 &mut builder,
@@ -917,7 +937,7 @@ where
             PoolType::Shielded(ShieldedProtocol::Sapling) => {
                 builder.add_sapling_output(
                     sapling_internal_ovk(),
-                    sapling_dfvk.change_address().1,
+                    override_sapling_change_address.unwrap_or(sapling_dfvk.change_address().1),
                     change_value.value(),
                     memo.clone(),
                 )?;
@@ -939,7 +959,7 @@ where
                 {
                     builder.add_orchard_output(
                         orchard_internal_ovk(),
-                        orchard_fvk.address_at(0u32, orchard::keys::Scope::Internal),
+                        orchard_fvk.address_at(0u32, orchard::keys::Scope::External),
                         change_value.value().into(),
                         memo.clone(),
                     )?;
@@ -1005,7 +1025,7 @@ where
     let build_result = builder.build(OsRng, spend_prover, output_prover, fee_rule)?;
 
     #[cfg(feature = "orchard")]
-    let orchard_internal_ivk = orchard_fvk.to_ivk(orchard::keys::Scope::Internal);
+    let orchard_internal_ivk = orchard_fvk.to_ivk(orchard::keys::Scope::External);
     #[cfg(feature = "orchard")]
     let orchard_outputs =
         orchard_output_meta
@@ -1030,13 +1050,13 @@ where
                             })
                     })
                     .internal_account_note_transpose_option()
-                    .expect("Wallet-internal outputs must be decryptable with the wallet's IVK");
+                    .expect("Wallet-external outputs must be decryptable with the wallet's IVK");
 
                 SentTransactionOutput::from_parts(output_index, recipient, value, memo)
             });
 
     let sapling_internal_ivk =
-        PreparedIncomingViewingKey::new(&sapling_dfvk.to_ivk(Scope::Internal));
+        PreparedIncomingViewingKey::new(&sapling_dfvk.to_ivk(Scope::External));
     let sapling_outputs =
         sapling_output_meta
             .into_iter()
@@ -1063,7 +1083,7 @@ where
                             })
                     })
                     .internal_account_note_transpose_option()
-                    .expect("Wallet-internal outputs must be decryptable with the wallet's IVK");
+                    .expect("Wallet-external outputs must be decryptable with the wallet's IVK");
 
                 SentTransactionOutput::from_parts(output_index, recipient, value, memo)
             });
@@ -1185,5 +1205,6 @@ where
         usk,
         OvkPolicy::Sender,
         &proposal,
+        None,
     )
 }

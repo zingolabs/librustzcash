@@ -4,8 +4,8 @@ use std::fmt;
 use std::rc::Rc;
 
 use regex::Regex;
-use schemerz::{Migrator, MigratorError};
-use schemerz_rusqlite::RusqliteAdapter;
+use schemer::{Migrator, MigratorError};
+use schemer_rusqlite::RusqliteAdapter;
 use secrecy::SecretVec;
 use shardtree::error::ShardTreeError;
 use uuid::Uuid;

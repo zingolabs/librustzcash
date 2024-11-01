@@ -8,7 +8,7 @@ use crate::kind::unified::Encoding;
 use crate::{kind::*, AddressKind, ZcashAddress};
 
 /// An error while attempting to parse a string as a Zcash address.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ParseError {
     /// The string is an invalid encoding.
     InvalidEncoding,
