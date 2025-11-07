@@ -2,9 +2,7 @@
 name = "zcash_proofs"
 description = "Zcash zk-SNARK circuits and proving APIs"
 version = "0.24.0"
-authors = [
-    "Jack Grigg <jack@z.cash>",
-]
+authors = ["Jack Grigg <jack@z.cash>"]
 homepage = "https://github.com/zcash/librustzcash"
 repository.workspace = true
 readme = "README.md"
@@ -18,7 +16,7 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-zcash_primitives = { workspace = true, features = ["circuits"] }
+zcash_primitives = { workspace = true, features = ["circuits", "std"] }
 
 # Dependencies exposed in a public API:
 # (Breaking upgrades to these require a breaking upgrade to this crate.)
