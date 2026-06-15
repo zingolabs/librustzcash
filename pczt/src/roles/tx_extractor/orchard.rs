@@ -1,17 +1,21 @@
-use orchard::{Bundle, bundle::Authorized, circuit::VerifyingKey};
+use orchard::{
+    Bundle,
+    bundle::Authorized,
+    circuit::{OrchardCircuitVersion, VerifyingKey},
+};
 use rand_core::OsRng;
 use zcash_protocol::value::ZatBalance;
 
 pub(super) fn verify_bundle(
     bundle: &Bundle<Authorized, ZatBalance>,
     orchard_vk: Option<&VerifyingKey>,
+    circuit_version: OrchardCircuitVersion,
     sighash: [u8; 32],
 ) -> Result<(), OrchardError> {
     if let Some(vk) = orchard_vk {
         verify_bundle_with_key(bundle, vk, sighash)
     } else {
-        // PCZT extraction produces new transactions, which use the NU6.2 (fixed) circuit.
-        let vk = VerifyingKey::build(crate::orchard::legacy_bundle_protocol().circuit_version());
+        let vk = VerifyingKey::build(circuit_version);
         verify_bundle_with_key(bundle, &vk, sighash)
     }
 }
