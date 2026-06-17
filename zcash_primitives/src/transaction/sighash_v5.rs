@@ -141,7 +141,7 @@ pub(super) fn transparent_sig_digest<A: TransparentAuthorizingContext>(
 }
 
 #[cfg(zcash_unstable = "zfuture")]
-pub(super) fn tze_input_sigdigests<A: tze::Authorization>(
+fn tze_input_sigdigests<A: tze::Authorization>(
     bundle: &tze::Bundle<A>,
     input: &SignableInput<'_>,
     txid_digests: &TzeDigests<Blake2bHash>,
