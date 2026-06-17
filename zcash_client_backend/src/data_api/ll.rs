@@ -20,7 +20,7 @@ use zcash_primitives::{
     transaction::{Transaction, TransactionData},
 };
 use zcash_protocol::{
-    PoolType, TxId,
+    PoolType, ShieldedProtocol, TxId,
     consensus::{BlockHeight, TxIndex},
     memo::MemoBytes,
     value::{BalanceError, Zatoshis},
@@ -642,6 +642,19 @@ pub trait ReceivedShieldedOutput {
     fn note_commitment_tree_position(&self) -> Option<Position>;
     /// Returns the HD derivation scope of the viewing key that decrypted the note, if known.
     fn recipient_key_scope(&self) -> Option<Scope>;
+    /// Returns the note commitment tree that contains this output.
+    fn note_commitment_tree(&self) -> NoteCommitmentTree {
+        match Self::POOL_TYPE {
+            PoolType::Shielded(ShieldedProtocol::Sapling) => NoteCommitmentTree::Sapling,
+            #[cfg(feature = "orchard")]
+            PoolType::Shielded(ShieldedProtocol::Orchard) => NoteCommitmentTree::Orchard,
+            PoolType::Transparent => unreachable!("transparent outputs are not shielded"),
+            #[cfg(not(feature = "orchard"))]
+            PoolType::Shielded(ShieldedProtocol::Orchard) => {
+                unreachable!("Orchard outputs require the orchard feature")
+            }
+        }
+    }
 }
 
 /// This trait provides a generalization over shielded Sapling output representations.
@@ -691,6 +704,9 @@ impl<AccountId: Copy> ReceivedShieldedOutput for WalletSaplingOutput<AccountId> 
     fn recipient_key_scope(&self) -> Option<Scope> {
         self.recipient_key_scope()
     }
+    fn note_commitment_tree(&self) -> NoteCommitmentTree {
+        WalletSaplingOutput::note_commitment_tree(self)
+    }
 }
 
 impl<AccountId: Copy> ReceivedShieldedOutput for DecryptedOutput<::sapling::Note, AccountId> {
@@ -729,6 +745,9 @@ impl<AccountId: Copy> ReceivedShieldedOutput for DecryptedOutput<::sapling::Note
         } else {
             Some(Scope::External)
         }
+    }
+    fn note_commitment_tree(&self) -> NoteCommitmentTree {
+        self.note_commitment_tree()
     }
 }
 
@@ -782,6 +801,9 @@ impl<AccountId: Copy> ReceivedShieldedOutput for WalletOrchardOutput<AccountId> 
     fn recipient_key_scope(&self) -> Option<Scope> {
         self.recipient_key_scope()
     }
+    fn note_commitment_tree(&self) -> NoteCommitmentTree {
+        WalletOrchardOutput::note_commitment_tree(self)
+    }
 }
 
 #[cfg(feature = "orchard")]
@@ -821,6 +843,9 @@ impl<AccountId: Copy> ReceivedShieldedOutput for DecryptedOutput<::orchard::Note
         } else {
             Some(Scope::External)
         }
+    }
+    fn note_commitment_tree(&self) -> NoteCommitmentTree {
+        self.note_commitment_tree()
     }
 }
 

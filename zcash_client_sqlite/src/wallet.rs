@@ -93,9 +93,9 @@ use zcash_client_backend::{
     DecryptedOutput,
     data_api::{
         Account as _, AccountBalance, AccountBirthday, AccountPurpose, AccountSource, AddressInfo,
-        AddressSource, BlockMetadata, Progress, Ratio, ReceivedTransactionOutput,
-        SAPLING_SHARD_HEIGHT, SentTransaction, SentTransactionOutput, TransactionDataRequest,
-        TransactionStatus, WalletSummary, Zip32Derivation,
+        AddressSource, BlockMetadata, NoteCommitmentTree, Progress, Ratio,
+        ReceivedTransactionOutput, SAPLING_SHARD_HEIGHT, SentTransaction, SentTransactionOutput,
+        TransactionDataRequest, TransactionStatus, WalletSummary, Zip32Derivation,
         chain::ChainState,
         defaults::address_receiver_matches_ua,
         error::{FindAccountForAddressError, RewindError},
@@ -3704,14 +3704,7 @@ pub(crate) fn store_transaction_to_be_sent<P: consensus::Parameters>(
     }
 
     for output in sent_tx.outputs() {
-        insert_sent_output(
-            conn,
-            params,
-            tx_ref,
-            *sent_tx.funding_account(),
-            output,
-            Some(sent_tx.tx()),
-        )?;
+        insert_sent_output(conn, params, tx_ref, *sent_tx.funding_account(), output)?;
 
         match output.recipient() {
             Recipient::External {
@@ -5193,7 +5186,6 @@ pub(crate) fn insert_sent_output<P: consensus::Parameters>(
     tx_ref: TxRef,
     from_account_uuid: AccountUuid,
     output: &SentTransactionOutput<AccountUuid>,
-    tx: Option<&Transaction>,
 ) -> Result<(), SqliteClientError> {
     let mut stmt_insert_sent_output = conn.prepare_cached(
         "INSERT INTO sent_notes (
@@ -5209,9 +5201,8 @@ pub(crate) fn insert_sent_output<P: consensus::Parameters>(
     let output_pool = sent_output_pool_code(
         pool_type,
         output.recipient(),
+        output.note_commitment_tree(),
         None,
-        output.output_index(),
-        tx,
     );
     let sql_args = named_params![
         ":transaction_id": tx_ref.0,
@@ -5270,7 +5261,7 @@ pub(crate) fn put_sent_output<P: consensus::Parameters>(
 
     let (from_account_id, to_address, to_account_id, pool_type) =
         recipient_params(conn, params, from_account_uuid, recipient)?;
-    let output_pool = sent_output_pool_code(pool_type, recipient, output_note, output_index, None);
+    let output_pool = sent_output_pool_code(pool_type, recipient, None, output_note);
     let sql_args = named_params![
         ":transaction_id": tx_ref.0,
         ":output_pool": &output_pool,
@@ -5291,14 +5282,13 @@ pub(crate) fn put_sent_output<P: consensus::Parameters>(
 fn sent_output_pool_code(
     pool_type: PoolType,
     recipient: &Recipient<AccountUuid>,
+    note_commitment_tree: Option<NoteCommitmentTree>,
     output_note: Option<&Note>,
-    output_index: usize,
-    tx: Option<&Transaction>,
 ) -> i64 {
     if pool_type == PoolType::ORCHARD
-        && (note_is_ironwood(output_note)
-            || recipient_note_is_ironwood(recipient)
-            || output_index_is_in_ironwood_bundle(tx, output_index))
+        && (note_commitment_tree == Some(NoteCommitmentTree::Ironwood)
+            || note_is_ironwood(output_note)
+            || recipient_note_is_ironwood(recipient))
     {
         IRONWOOD_POOL_CODE
     } else {
@@ -5326,32 +5316,6 @@ fn recipient_note_is_ironwood(recipient: &Recipient<AccountUuid>) -> bool {
     match recipient {
         Recipient::InternalAccount { note, .. } => note_is_ironwood(Some(note)),
         _ => false,
-    }
-}
-
-fn output_index_is_in_ironwood_bundle(tx: Option<&Transaction>, output_index: usize) -> bool {
-    #[cfg(zcash_unstable = "nu6.3")]
-    {
-        tx.and_then(|tx| {
-            let orchard_action_count = tx
-                .orchard_bundle()
-                .map_or(0, |bundle| bundle.actions().len());
-            let ironwood_action_count = tx
-                .ironwood_bundle()
-                .map_or(0, |bundle| bundle.actions().len());
-
-            (output_index >= orchard_action_count
-                && output_index < orchard_action_count + ironwood_action_count)
-                .then_some(())
-        })
-        .is_some()
-    }
-
-    #[cfg(not(zcash_unstable = "nu6.3"))]
-    {
-        let _ = tx;
-        let _ = output_index;
-        false
     }
 }
 

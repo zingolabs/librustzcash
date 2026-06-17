@@ -2668,6 +2668,7 @@ impl ReceivedTransactionOutput {
 /// This type is capable of representing both shielded and transparent outputs.
 pub struct SentTransactionOutput<AccountId> {
     output_index: usize,
+    note_commitment_tree: Option<NoteCommitmentTree>,
     recipient: Recipient<AccountId>,
     value: Zatoshis,
     memo: Option<MemoBytes>,
@@ -2691,6 +2692,24 @@ impl<AccountId> SentTransactionOutput<AccountId> {
     ) -> Self {
         Self {
             output_index,
+            note_commitment_tree: None,
+            recipient,
+            value,
+            memo,
+        }
+    }
+
+    /// Constructs a new [`SentTransactionOutput`] with explicit note commitment tree metadata.
+    pub(crate) fn from_parts_in_tree(
+        note_commitment_tree: Option<NoteCommitmentTree>,
+        output_index: usize,
+        recipient: Recipient<AccountId>,
+        value: Zatoshis,
+        memo: Option<MemoBytes>,
+    ) -> Self {
+        Self {
+            output_index,
+            note_commitment_tree,
             recipient,
             value,
             memo,
@@ -2705,6 +2724,10 @@ impl<AccountId> SentTransactionOutput<AccountId> {
     ///   transparent outputs of the transaction.
     pub fn output_index(&self) -> usize {
         self.output_index
+    }
+    /// Returns the note commitment tree for this output, if known.
+    pub fn note_commitment_tree(&self) -> Option<NoteCommitmentTree> {
+        self.note_commitment_tree
     }
     /// Returns the recipient address of the transaction, or the account id and
     /// resulting note/outpoint for wallet-internal outputs.

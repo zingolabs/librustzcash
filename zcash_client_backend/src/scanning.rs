@@ -737,6 +737,7 @@ fn find_received<
     block_height: BlockHeight,
     last_commitments_in_block: bool,
     txid: TxId,
+    note_commitment_tree: NoteCommitmentTree,
     output_index: impl Fn(usize) -> usize,
     note_position: impl Fn(usize) -> Position,
     keys: &HashMap<IvkTag, SK>,
@@ -826,7 +827,8 @@ fn find_received<
             let note_commitment_tree_position = note_position(output_idx);
             let nf = key.nf(&note, note_commitment_tree_position);
 
-            shielded_outputs.push(WalletOutput::from_parts(
+            shielded_outputs.push(WalletOutput::from_parts_in_tree(
+                note_commitment_tree,
                 output_index(output_idx),
                 output.ephemeral_key(),
                 note,

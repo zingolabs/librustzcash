@@ -396,6 +396,7 @@ where
             cur_height,
             pos_tracker.compact_tx_contains_last_sapling_outputs_in_block(cur_height, &tx)?,
             txid,
+            NoteCommitmentTree::Sapling,
             |output_idx| output_idx,
             |output_idx| pos_tracker.sapling_note_position(output_idx),
             &scanning_keys.sapling,
@@ -436,6 +437,7 @@ where
             cur_height,
             pos_tracker.compact_tx_contains_last_orchard_actions_in_block(cur_height, &tx)?,
             txid,
+            NoteCommitmentTree::Orchard,
             |output_idx| output_idx,
             |output_idx| pos_tracker.orchard_note_position(output_idx),
             &scanning_keys.orchard,
@@ -469,6 +471,7 @@ where
             cur_height,
             pos_tracker.compact_tx_contains_last_ironwood_actions_in_block(cur_height, &tx)?,
             txid,
+            NoteCommitmentTree::Ironwood,
             // Ironwood is represented as Orchard-shaped V3 outputs at this API boundary. Offset
             // Ironwood action indices by the Orchard action count so mixed-bundle transactions have
             // unique Orchard output identifiers.

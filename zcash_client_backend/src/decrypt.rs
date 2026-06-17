@@ -13,7 +13,7 @@ use zcash_protocol::{
 };
 use zip32::Scope;
 
-use crate::data_api::DecryptedTransaction;
+use crate::data_api::{DecryptedTransaction, NoteCommitmentTree};
 
 #[cfg(feature = "orchard")]
 use orchard::note_encryption::OrchardDomain;
@@ -41,6 +41,7 @@ pub enum TransferType {
 /// A decrypted shielded output.
 pub struct DecryptedOutput<Note, AccountId> {
     index: usize,
+    note_commitment_tree: Option<NoteCommitmentTree>,
     note: Note,
     account: AccountId,
     memo: MemoBytes,
@@ -57,6 +58,25 @@ impl<Note, AccountId> DecryptedOutput<Note, AccountId> {
     ) -> Self {
         Self {
             index,
+            note_commitment_tree: None,
+            note,
+            account,
+            memo,
+            transfer_type,
+        }
+    }
+
+    pub(crate) fn new_in_tree(
+        note_commitment_tree: NoteCommitmentTree,
+        index: usize,
+        note: Note,
+        account: AccountId,
+        memo: MemoBytes,
+        transfer_type: TransferType,
+    ) -> Self {
+        Self {
+            index,
+            note_commitment_tree: Some(note_commitment_tree),
             note,
             account,
             memo,
@@ -93,6 +113,12 @@ impl<Note, AccountId> DecryptedOutput<Note, AccountId> {
 }
 
 impl<A> DecryptedOutput<sapling::Note, A> {
+    /// Returns the note commitment tree to which this output belongs.
+    pub fn note_commitment_tree(&self) -> NoteCommitmentTree {
+        self.note_commitment_tree
+            .unwrap_or(NoteCommitmentTree::Sapling)
+    }
+
     pub fn note_value(&self) -> Zatoshis {
         Zatoshis::from_u64(self.note.value().inner())
             .expect("Sapling note value is expected to have been validated by consensus.")
@@ -101,6 +127,12 @@ impl<A> DecryptedOutput<sapling::Note, A> {
 
 #[cfg(feature = "orchard")]
 impl<A> DecryptedOutput<orchard::note::Note, A> {
+    /// Returns the note commitment tree to which this output belongs.
+    pub fn note_commitment_tree(&self) -> NoteCommitmentTree {
+        self.note_commitment_tree
+            .unwrap_or(NoteCommitmentTree::Orchard)
+    }
+
     pub fn note_value(&self) -> Zatoshis {
         Zatoshis::from_u64(self.note.value().inner())
             .expect("Orchard note value is expected to have been validated by consensus.")
@@ -289,7 +321,8 @@ pub fn decrypt_transaction<'a, P: consensus::Parameters, AccountId: Copy>(
                                 })
                                 .into_iter()
                                 .map(move |((note, _, memo), transfer_type)| {
-                                    DecryptedOutput::new(
+                                    DecryptedOutput::new_in_tree(
+                                        NoteCommitmentTree::Ironwood,
                                         orchard_action_count + index,
                                         note,
                                         account,

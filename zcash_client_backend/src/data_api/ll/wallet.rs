@@ -390,13 +390,7 @@ where
             #[cfg(feature = "orchard")]
             let iter = iter.chain(wtx.orchard_outputs().iter().map(|out| {
                 (
-                    if cfg!(zcash_unstable = "nu6.3")
-                        && out.note().version() == orchard::note::NoteVersion::V3
-                    {
-                        NoteCommitmentTree::Ironwood
-                    } else {
-                        NoteCommitmentTree::Orchard
-                    },
+                    out.note_commitment_tree(),
                     out.note_commitment_tree_position(),
                 )
             }));
