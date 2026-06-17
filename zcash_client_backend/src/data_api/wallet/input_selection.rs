@@ -870,7 +870,7 @@ where
             0
         };
         ::orchard::BundleProtocol::LegacyOrchard
-            .transactional_action_count(spendable_notes.orchard.len(), requested_orchard_actions)
+            .num_actions(spendable_notes.orchard.len(), requested_orchard_actions)
             .map_err(|e| {
                 InputSelectorError::Change(ChangeError::BundleError(
                     orchard_fees::action_count_error(e),
@@ -1268,7 +1268,7 @@ impl<DbT: InputSource> ShieldingSelector for GreedyInputSelector<DbT> {
             #[cfg(feature = "orchard")]
             PoolType::ORCHARD => {
                 let count = ::orchard::BundleProtocol::LegacyOrchard
-                    .transactional_action_count(0, 1)
+                    .num_actions(0, 1)
                     .expect(
                         "legacy Orchard protocol permits any transactional spend and output count",
                     );

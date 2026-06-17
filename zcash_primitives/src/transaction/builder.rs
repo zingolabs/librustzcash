@@ -286,7 +286,7 @@ impl OrchardBuilderConfig {
     ) -> Result<usize, orchard::BundleActionCountError> {
         match self {
             OrchardBuilderConfig::Transactional(protocol) => {
-                protocol.transactional_action_count(num_spends, num_outputs)
+                protocol.num_actions(num_spends, num_outputs)
             }
             OrchardBuilderConfig::Coinbase(protocol) => {
                 if num_spends > 0 {
