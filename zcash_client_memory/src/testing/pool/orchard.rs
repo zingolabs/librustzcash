@@ -69,11 +69,7 @@ fn wallet_summary_counts_v3_notes_as_ironwood() {
     let balance = summary.account_balances().get(&account.id()).unwrap();
     assert_eq!(balance.orchard_balance().total(), Zatoshis::ZERO);
     assert_eq!(balance.ironwood_balance().total(), value);
-    if cfg!(zcash_unstable = "nu6.3") {
-        assert_eq!(balance.spendable_value(), value);
-    } else {
-        assert_eq!(balance.spendable_value(), Zatoshis::ZERO);
-    }
+    assert_eq!(balance.spendable_value(), Zatoshis::ZERO);
 }
 
 #[test]
