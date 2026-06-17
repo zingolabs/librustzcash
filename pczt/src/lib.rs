@@ -124,7 +124,6 @@ pub struct Pczt {
     orchard: orchard::Bundle,
     /// Ironwood bundle fields, represented as Orchard-shaped actions.
     #[cfg(zcash_unstable = "nu6.3")]
-    #[serde(default = "empty_ironwood_bundle")]
     #[getset(get = "pub")]
     ironwood: orchard::Bundle,
 }
@@ -198,37 +197,6 @@ pub(crate) fn empty_ironwood_bundle() -> orchard::Bundle {
         anchor: EMPTY_IRONWOOD_ANCHOR,
         zkproof: None,
         bsk: None,
-    }
-}
-
-#[cfg(zcash_unstable = "nu6.3")]
-#[derive(Serialize, Deserialize)]
-struct PcztWithoutIronwood {
-    global: common::Global,
-    transparent: transparent::Bundle,
-    sapling: sapling::Bundle,
-    orchard: orchard::Bundle,
-}
-
-#[cfg(zcash_unstable = "nu6.3")]
-#[derive(Serialize)]
-struct PcztWithoutIronwoodRef<'a> {
-    global: &'a common::Global,
-    transparent: &'a transparent::Bundle,
-    sapling: &'a sapling::Bundle,
-    orchard: &'a orchard::Bundle,
-}
-
-#[cfg(zcash_unstable = "nu6.3")]
-impl From<PcztWithoutIronwood> for Pczt {
-    fn from(pczt: PcztWithoutIronwood) -> Self {
-        Self {
-            global: pczt.global,
-            transparent: pczt.transparent,
-            sapling: pczt.sapling,
-            orchard: pczt.orchard,
-            ironwood: empty_ironwood_bundle(),
-        }
     }
 }
 
@@ -392,11 +360,11 @@ impl Pczt {
             return Err(ParseError::NotPczt);
         }
         let version = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
-        let pczt = match version {
+        let pczt: Self = match version {
             PCZT_VERSION_1 => postcard_from_exact::<v1::Pczt>(&bytes[8..])
                 .map(Into::into)
                 .map_err(ParseError::Invalid),
-            PCZT_VERSION_2 => Self::parse_v2_payload(&bytes[8..]),
+            PCZT_VERSION_2 => postcard_from_exact(&bytes[8..]).map_err(ParseError::Invalid),
             _ => Err(ParseError::UnknownVersion(version)),
         }?;
 
@@ -408,53 +376,7 @@ impl Pczt {
             .validate_ironwood_note_plaintext_versions()
             .map_err(ParseError::NotePlaintextVersion)?;
 
-        Ok(pczt.normalize())
-    }
-
-    #[cfg(zcash_unstable = "nu6.3")]
-    fn parse_v2_payload(bytes: &[u8]) -> Result<Self, ParseError> {
-        postcard_from_exact(bytes)
-            .or_else(|err| {
-                postcard_from_exact::<PcztWithoutIronwood>(bytes)
-                    .map(Into::into)
-                    .map_err(|_| err)
-            })
-            .map_err(ParseError::Invalid)
-    }
-
-    #[cfg(not(zcash_unstable = "nu6.3"))]
-    fn parse_v2_payload(bytes: &[u8]) -> Result<Self, ParseError> {
-        postcard_from_exact(bytes).map_err(ParseError::Invalid)
-    }
-
-    #[cfg(zcash_unstable = "nu6.3")]
-    fn serializes_as_legacy_v2(&self) -> bool {
-        self.global.tx_version != zcash_protocol::constants::V6_TX_VERSION
-            && self.ironwood.actions.is_empty()
-            && self.ironwood.flags == IRONWOOD_SPENDS_AND_OUTPUTS_ENABLED
-            && self.ironwood.value_sum == (0, true)
-            && self.ironwood.anchor == EMPTY_IRONWOOD_ANCHOR
-            && self.ironwood.zkproof.is_none()
-            && self.ironwood.bsk.is_none()
-    }
-
-    fn normalize(self) -> Self {
-        #[cfg(zcash_unstable = "nu6.3")]
-        {
-            let mut pczt = self;
-            if (pczt.global.tx_version != zcash_protocol::constants::V6_TX_VERSION
-                || pczt.global.version_group_id != zcash_protocol::constants::V6_VERSION_GROUP_ID)
-                && pczt.ironwood.actions.is_empty()
-            {
-                pczt.ironwood = empty_ironwood_bundle();
-            }
-            pczt
-        }
-
-        #[cfg(not(zcash_unstable = "nu6.3"))]
-        {
-            self
-        }
+        Ok(pczt)
     }
 
     /// Serializes this PCZT.
@@ -462,23 +384,6 @@ impl Pczt {
         let mut bytes = vec![];
         bytes.extend_from_slice(MAGIC_BYTES);
         bytes.extend_from_slice(&PCZT_VERSION_2.to_le_bytes());
-
-        #[cfg(zcash_unstable = "nu6.3")]
-        {
-            if self.serializes_as_legacy_v2() {
-                return postcard::to_extend(
-                    &PcztWithoutIronwoodRef {
-                        global: &self.global,
-                        transparent: &self.transparent,
-                        sapling: &self.sapling,
-                        orchard: &self.orchard,
-                    },
-                    bytes,
-                )
-                .expect("can serialize into memory");
-            }
-        }
-
         postcard::to_extend(self, bytes).expect("can serialize into memory")
     }
 
@@ -1624,56 +1529,10 @@ mod tests {
 
     #[cfg(zcash_unstable = "nu6.3")]
     #[test]
-    fn parse_v2_pczt_without_ironwood_bundle() {
-        let pczt =
-            roles::creator::Creator::new(BranchId::Nu6.into(), 10_000_000, 133, [0; 32], [0; 32])
-                .build();
-        let legacy_pczt = PcztWithoutIronwood {
-            global: pczt.global,
-            transparent: pczt.transparent,
-            sapling: pczt.sapling,
-            orchard: pczt.orchard,
-        };
-
-        let mut bytes = vec![];
-        bytes.extend_from_slice(MAGIC_BYTES);
-        bytes.extend_from_slice(&PCZT_VERSION_2.to_le_bytes());
-        let bytes = postcard::to_extend(&legacy_pczt, bytes).unwrap();
-
-        let parsed = Pczt::parse(&bytes).unwrap();
-        assert!(parsed.ironwood.actions.is_empty());
-        assert_eq!(parsed.ironwood.flags, empty_ironwood_bundle().flags);
-        assert_eq!(parsed.ironwood.value_sum, (0, true));
-    }
-
-    #[cfg(zcash_unstable = "nu6.3")]
-    #[test]
-    fn serialize_v5_without_ironwood_uses_legacy_v2_layout() {
-        let pczt =
-            roles::creator::Creator::new(BranchId::Nu6.into(), 10_000_000, 133, [0; 32], [0; 32])
-                .build();
-        let legacy_pczt = PcztWithoutIronwood {
-            global: pczt.global.clone(),
-            transparent: pczt.transparent.clone(),
-            sapling: pczt.sapling.clone(),
-            orchard: pczt.orchard.clone(),
-        };
-
-        let mut expected = vec![];
-        expected.extend_from_slice(MAGIC_BYTES);
-        expected.extend_from_slice(&PCZT_VERSION_2.to_le_bytes());
-        let expected = postcard::to_extend(&legacy_pczt, expected).unwrap();
-
-        assert_eq!(pczt.serialize(), expected);
-    }
-
-    #[cfg(zcash_unstable = "nu6.3")]
-    #[test]
-    fn parse_normalizes_empty_ironwood_metadata_for_v5() {
+    fn parse_preserves_empty_ironwood_metadata_for_v5() {
         let mut pczt =
             roles::creator::Creator::new(BranchId::Nu6.into(), 10_000_000, 133, [0; 32], [0; 32])
                 .build();
-        let legacy_serialized = pczt.serialize();
         pczt.ironwood.anchor = [1; 32];
 
         let mut encoded = vec![];
@@ -1682,15 +1541,8 @@ mod tests {
         let encoded = postcard::to_extend(&pczt, encoded).unwrap();
 
         let parsed = Pczt::parse(&encoded).unwrap();
-        let fallback = empty_ironwood_bundle();
-
         assert!(parsed.ironwood.actions.is_empty());
-        assert_eq!(parsed.ironwood.flags, fallback.flags);
-        assert_eq!(parsed.ironwood.value_sum, fallback.value_sum);
-        assert_eq!(parsed.ironwood.anchor, fallback.anchor);
-        assert_eq!(parsed.ironwood.zkproof, fallback.zkproof);
-        assert_eq!(parsed.ironwood.bsk, fallback.bsk);
-        assert_eq!(parsed.serialize(), legacy_serialized);
+        assert_eq!(parsed.ironwood.anchor, [1; 32]);
     }
 
     #[cfg(zcash_unstable = "nu6.3")]
@@ -1711,27 +1563,5 @@ mod tests {
 
         assert!(parsed.ironwood.actions.is_empty());
         assert_eq!(*parsed.ironwood().anchor(), anchor);
-    }
-
-    #[cfg(zcash_unstable = "nu6.3")]
-    #[test]
-    fn parse_v2_pczt_without_ironwood_bundle_rejects_trailing_bytes() {
-        let pczt =
-            roles::creator::Creator::new(BranchId::Nu6.into(), 10_000_000, 133, [0; 32], [0; 32])
-                .build();
-        let legacy_pczt = PcztWithoutIronwood {
-            global: pczt.global,
-            transparent: pczt.transparent,
-            sapling: pczt.sapling,
-            orchard: pczt.orchard,
-        };
-
-        let mut bytes = vec![];
-        bytes.extend_from_slice(MAGIC_BYTES);
-        bytes.extend_from_slice(&PCZT_VERSION_2.to_le_bytes());
-        let mut bytes = postcard::to_extend(&legacy_pczt, bytes).unwrap();
-        bytes.push(0);
-
-        assert!(matches!(Pczt::parse(&bytes), Err(ParseError::Invalid(_))));
     }
 }

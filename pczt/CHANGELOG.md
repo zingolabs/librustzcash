@@ -45,12 +45,13 @@ workspace.
   V3.
 - Serialized v1 Orchard PCZT encodings continue to parse by defaulting missing
   note plaintext versions to V2.
+- Serialized v2 PCZTs under the NU6.3 unstable cfg now use the current schema
+  with an explicit Ironwood bundle field.
 
 ### Fixed
 - PCZT parsing now rejects trailing bytes after v1 and v2 payloads.
-- Creator output from transaction builder parts now uses the same empty
-  Ironwood bundle fallback as legacy PCZT parsing, and rejects any supplied
-  Ironwood bundle state for transaction versions that do not support Ironwood.
+- Creator output from transaction builder parts rejects any supplied Ironwood
+  bundle state for transaction versions that do not support Ironwood.
 
 ## [0.7.0] - 2026-06-02
 
