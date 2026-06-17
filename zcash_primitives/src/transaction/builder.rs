@@ -258,47 +258,6 @@ pub enum BuildConfig {
     },
 }
 
-/// Rules for constructing an Orchard bundle.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OrchardBuilderConfig {
-    /// Construct a standard transactional bundle using the given protocol.
-    Transactional(orchard::BundleProtocol),
-    /// Construct a coinbase bundle using the given protocol.
-    Coinbase(orchard::BundleProtocol),
-}
-
-impl OrchardBuilderConfig {
-    fn builder(self, anchor: orchard::Anchor) -> orchard::builder::Builder {
-        match self {
-            OrchardBuilderConfig::Transactional(protocol) => {
-                orchard::builder::Builder::new(protocol, anchor)
-            }
-            OrchardBuilderConfig::Coinbase(protocol) => {
-                orchard::builder::Builder::new_coinbase(protocol, anchor)
-            }
-        }
-    }
-
-    fn action_count(
-        self,
-        num_spends: usize,
-        num_outputs: usize,
-    ) -> Result<usize, orchard::BundleActionCountError> {
-        match self {
-            OrchardBuilderConfig::Transactional(protocol) => {
-                protocol.num_actions(num_spends, num_outputs)
-            }
-            OrchardBuilderConfig::Coinbase(protocol) => {
-                if num_spends > 0 {
-                    Err(orchard::BundleActionCountError::SpendsDisabled)
-                } else {
-                    Ok(protocol.coinbase_action_count(num_outputs))
-                }
-            }
-        }
-    }
-}
-
 impl BuildConfig {
     /// Returns the Sapling bundle type and anchor for this configuration.
     pub fn sapling_builder_config(
@@ -315,17 +274,14 @@ impl BuildConfig {
         }
     }
 
-    /// Returns the Orchard bundle type and anchor for this configuration.
-    pub fn orchard_builder_config(&self) -> Option<(OrchardBuilderConfig, orchard::Anchor)> {
+    /// Returns the Orchard builder for this configuration.
+    fn orchard_builder(&self) -> Option<orchard::builder::Builder> {
         match self {
             BuildConfig::Standard { orchard_anchor, .. } => orchard_anchor.as_ref().map(|a| {
-                (
-                    OrchardBuilderConfig::Transactional(orchard::BundleProtocol::LegacyOrchard),
-                    *a,
-                )
+                orchard::builder::Builder::new(orchard::BundleProtocol::LegacyOrchard, *a)
             }),
-            BuildConfig::Coinbase { .. } => Some((
-                OrchardBuilderConfig::Coinbase(orchard::BundleProtocol::LegacyOrchard),
+            BuildConfig::Coinbase { .. } => Some(orchard::builder::Builder::new_coinbase(
+                orchard::BundleProtocol::LegacyOrchard,
                 orchard::Anchor::empty_tree(),
             )),
         }
@@ -334,6 +290,24 @@ impl BuildConfig {
     /// Returns `true` if this configuration is for building a coinbase transaction.
     pub fn is_coinbase(&self) -> bool {
         matches!(self, BuildConfig::Coinbase { .. })
+    }
+}
+
+fn orchard_action_count(
+    builder: &orchard::builder::Builder,
+    is_coinbase: bool,
+) -> Result<usize, orchard::BundleActionCountError> {
+    let num_spends = builder.spends().len();
+    let num_outputs = builder.outputs().len();
+
+    if is_coinbase {
+        if num_spends > 0 {
+            Err(orchard::BundleActionCountError::SpendsDisabled)
+        } else {
+            Ok(builder.protocol().coinbase_action_count(num_outputs))
+        }
+    } else {
+        builder.protocol().num_actions(num_spends, num_outputs)
     }
 }
 
@@ -538,9 +512,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         let orchard_builder = if orchard_builder_available
             && params.is_nu_active(NetworkUpgrade::Nu5, target_height)
         {
-            build_config
-                .orchard_builder_config()
-                .map(|(builder_config, anchor)| builder_config.builder(anchor))
+            build_config.orchard_builder()
         } else {
             None
         };
@@ -814,17 +786,12 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
                             .num_outputs(sapling_spends, builder.outputs().len())
                             .map_err(FeeError::Bundle)
                     })?,
-                self.orchard_builder.as_ref().map_or(Ok(0), |builder| {
-                    let builder_config = if self.build_config.is_coinbase() {
-                        OrchardBuilderConfig::Coinbase(builder.protocol())
-                    } else {
-                        OrchardBuilderConfig::Transactional(builder.protocol())
-                    };
-
-                    builder_config
-                        .action_count(builder.spends().len(), builder.outputs().len())
-                        .map_err(|e| FeeError::Bundle(orchard_action_count_error(e)))
-                })?,
+                self.orchard_builder
+                    .as_ref()
+                    .map_or(Ok(0), |builder| {
+                        orchard_action_count(builder, self.build_config.is_coinbase())
+                    })
+                    .map_err(|e| FeeError::Bundle(orchard_action_count_error(e)))?,
             )
             .map_err(FeeError::FeeRule)
     }
@@ -863,17 +830,12 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
                             .num_outputs(sapling_spends, builder.outputs().len())
                             .map_err(FeeError::Bundle)
                     })?,
-                self.orchard_builder.as_ref().map_or(Ok(0), |builder| {
-                    let builder_config = if self.build_config.is_coinbase() {
-                        OrchardBuilderConfig::Coinbase(builder.protocol())
-                    } else {
-                        OrchardBuilderConfig::Transactional(builder.protocol())
-                    };
-
-                    builder_config
-                        .action_count(builder.spends().len(), builder.outputs().len())
-                        .map_err(|e| FeeError::Bundle(orchard_action_count_error(e)))
-                })?,
+                self.orchard_builder
+                    .as_ref()
+                    .map_or(Ok(0), |builder| {
+                        orchard_action_count(builder, self.build_config.is_coinbase())
+                    })
+                    .map_err(|e| FeeError::Bundle(orchard_action_count_error(e)))?,
                 self.tze_builder.inputs(),
                 self.tze_builder.outputs(),
             )
