@@ -3,18 +3,11 @@
 
 use std::convert::Infallible;
 
-use orchard::{BundleActionCountError, BundleProtocol};
+use orchard::BundleProtocol;
 use zcash_protocol::value::Zatoshis;
 
-pub(crate) fn action_count_error(err: BundleActionCountError) -> &'static str {
-    match err {
-        BundleActionCountError::InputCountOverflow => {
-            "Requested spend and output counts overflowed."
-        }
-        BundleActionCountError::SpendsDisabled => "Spends are disabled for this bundle.",
-        BundleActionCountError::OutputsDisabled => "Outputs are disabled for this bundle.",
-        _ => "The requested Orchard action count violates bundle constraints.",
-    }
+pub(crate) fn action_count_error(err: orchard::BundleActionCountError) -> &'static str {
+    err.as_static_str()
 }
 
 /// A trait that provides a minimized view of Orchard-style bundle configuration

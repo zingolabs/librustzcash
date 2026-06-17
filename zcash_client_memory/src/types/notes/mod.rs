@@ -126,14 +126,7 @@ mod serialization {
                     )
                     .unwrap();
                     Self::Orchard(
-                        orchard::Note::from_parts(
-                            recipient,
-                            value,
-                            rho,
-                            rseed,
-                            orchard::note::NoteVersion::V2,
-                        )
-                        .unwrap(),
+                        orchard::Note::from_v2_parts(recipient, value, rho, rseed).unwrap(),
                     )
                 }
                 #[cfg(not(feature = "orchard"))]
