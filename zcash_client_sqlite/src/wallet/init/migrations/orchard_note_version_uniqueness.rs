@@ -7,11 +7,11 @@ use uuid::Uuid;
 
 use crate::wallet::init::WalletMigrationError;
 
-use super::orchard_note_versions;
+use super::witness_stabilized_notes;
 
 pub(super) const MIGRATION_ID: Uuid = Uuid::from_u128(0x2aa44e8e_e8a7_4760_8de4_501956c969ac);
 
-const DEPENDENCIES: &[Uuid] = &[orchard_note_versions::MIGRATION_ID];
+const DEPENDENCIES: &[Uuid] = &[witness_stabilized_notes::MIGRATION_ID];
 
 pub(super) struct Migration;
 
@@ -76,7 +76,7 @@ impl RusqliteMigration for Migration {
                  id, transaction_id, action_index, account_id,
                  diversifier, value, rho, rseed, nf, is_change, memo,
                  commitment_tree_position, recipient_key_scope, address_id,
-                 witness_stabilized, note_version
+                 witness_stabilized, 2
              FROM orchard_received_notes;
 
              DROP TABLE orchard_received_notes;

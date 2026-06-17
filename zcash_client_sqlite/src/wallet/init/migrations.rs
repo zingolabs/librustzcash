@@ -28,7 +28,6 @@ mod ironwood_shardtree;
 mod ivk_item_cache;
 mod nullifier_map;
 mod orchard_note_version_uniqueness;
-mod orchard_note_versions;
 mod orchard_received_notes;
 mod orchard_shardtree;
 mod received_notes_nullable_nf;
@@ -235,7 +234,6 @@ pub(super) fn all_migrations<
         Box::new(witness_stabilized_notes::Migration {
             params: params.clone(),
         }),
-        Box::new(orchard_note_versions::Migration),
         Box::new(orchard_note_version_uniqueness::Migration),
         Box::new(ironwood_shardtree::Migration {
             params: params.clone(),
