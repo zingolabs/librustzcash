@@ -24,7 +24,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use getset::Getters;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 #[cfg(all(
     any(feature = "io-finalizer", feature = "signer", feature = "tx-extractor"),
@@ -101,7 +101,7 @@ where
 }
 
 /// A partially-created Zcash transaction.
-#[derive(Clone, Debug, Serialize, Deserialize, Getters)]
+#[derive(Clone, Debug, Getters)]
 pub struct Pczt {
     /// Global fields that are relevant to the transaction as a whole.
     #[getset(get = "pub")]
@@ -350,6 +350,239 @@ mod v1 {
     }
 }
 
+mod v2 {
+    use alloc::{collections::BTreeMap, string::String, vec::Vec};
+
+    use serde::{Deserialize, Serialize};
+    use serde_with::serde_as;
+
+    use crate::{common, orchard, sapling, transparent};
+
+    // Postcard encodes struct fields positionally, without field names. Keep
+    // each encoding version's wire structs separate from the live domain types.
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub(super) struct Pczt {
+        pub(super) global: common::Global,
+        pub(super) transparent: transparent::Bundle,
+        pub(super) sapling: sapling::Bundle,
+        pub(super) orchard: Bundle,
+        #[cfg(zcash_unstable = "nu6.3")]
+        pub(super) ironwood: Bundle,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub(super) struct Bundle {
+        pub(super) actions: Vec<Action>,
+        pub(super) flags: u8,
+        pub(super) value_sum: (u64, bool),
+        pub(super) anchor: [u8; 32],
+        pub(super) zkproof: Option<Vec<u8>>,
+        pub(super) bsk: Option<[u8; 32]>,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub(super) struct Action {
+        pub(super) cv_net: [u8; 32],
+        pub(super) spend: Spend,
+        pub(super) output: Output,
+        pub(super) rcv: Option<[u8; 32]>,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub(super) struct Spend {
+        pub(super) nullifier: [u8; 32],
+        pub(super) rk: [u8; 32],
+        #[serde_as(as = "Option<[_; 64]>")]
+        pub(super) spend_auth_sig: Option<[u8; 64]>,
+        #[serde_as(as = "Option<[_; 43]>")]
+        pub(super) recipient: Option<[u8; 43]>,
+        pub(super) value: Option<u64>,
+        pub(super) rho: Option<[u8; 32]>,
+        pub(super) rseed: Option<[u8; 32]>,
+        pub(super) note_version: orchard::NotePlaintextVersion,
+        #[serde_as(as = "Option<[_; 96]>")]
+        pub(super) fvk: Option<[u8; 96]>,
+        pub(super) witness: Option<(u32, [[u8; 32]; 32])>,
+        pub(super) alpha: Option<[u8; 32]>,
+        pub(super) zip32_derivation: Option<common::Zip32Derivation>,
+        pub(super) dummy_sk: Option<[u8; 32]>,
+        pub(super) proprietary: BTreeMap<String, Vec<u8>>,
+    }
+
+    #[serde_as]
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub(super) struct Output {
+        pub(super) cmx: [u8; 32],
+        pub(super) note_version: orchard::NotePlaintextVersion,
+        pub(super) ephemeral_key: [u8; 32],
+        pub(super) enc_ciphertext: Vec<u8>,
+        pub(super) out_ciphertext: Vec<u8>,
+        #[serde_as(as = "Option<[_; 43]>")]
+        pub(super) recipient: Option<[u8; 43]>,
+        pub(super) value: Option<u64>,
+        pub(super) rseed: Option<[u8; 32]>,
+        pub(super) ock: Option<[u8; 32]>,
+        pub(super) zip32_derivation: Option<common::Zip32Derivation>,
+        pub(super) user_address: Option<String>,
+        pub(super) proprietary: BTreeMap<String, Vec<u8>>,
+    }
+
+    impl From<Pczt> for crate::Pczt {
+        fn from(pczt: Pczt) -> Self {
+            Self {
+                global: pczt.global,
+                transparent: pczt.transparent,
+                sapling: pczt.sapling,
+                orchard: pczt.orchard.into(),
+                #[cfg(zcash_unstable = "nu6.3")]
+                ironwood: pczt.ironwood.into(),
+            }
+        }
+    }
+
+    impl From<&crate::Pczt> for Pczt {
+        fn from(pczt: &crate::Pczt) -> Self {
+            Self {
+                global: pczt.global.clone(),
+                transparent: pczt.transparent.clone(),
+                sapling: pczt.sapling.clone(),
+                orchard: (&pczt.orchard).into(),
+                #[cfg(zcash_unstable = "nu6.3")]
+                ironwood: (&pczt.ironwood).into(),
+            }
+        }
+    }
+
+    impl From<Bundle> for orchard::Bundle {
+        fn from(bundle: Bundle) -> Self {
+            Self {
+                actions: bundle.actions.into_iter().map(Into::into).collect(),
+                flags: bundle.flags,
+                value_sum: bundle.value_sum,
+                anchor: bundle.anchor,
+                zkproof: bundle.zkproof,
+                bsk: bundle.bsk,
+            }
+        }
+    }
+
+    impl From<&orchard::Bundle> for Bundle {
+        fn from(bundle: &orchard::Bundle) -> Self {
+            Self {
+                actions: bundle.actions.iter().map(Into::into).collect(),
+                flags: bundle.flags,
+                value_sum: bundle.value_sum,
+                anchor: bundle.anchor,
+                zkproof: bundle.zkproof.clone(),
+                bsk: bundle.bsk,
+            }
+        }
+    }
+
+    impl From<Action> for orchard::Action {
+        fn from(action: Action) -> Self {
+            Self {
+                cv_net: action.cv_net,
+                spend: action.spend.into(),
+                output: action.output.into(),
+                rcv: action.rcv,
+            }
+        }
+    }
+
+    impl From<&orchard::Action> for Action {
+        fn from(action: &orchard::Action) -> Self {
+            Self {
+                cv_net: action.cv_net,
+                spend: (&action.spend).into(),
+                output: (&action.output).into(),
+                rcv: action.rcv,
+            }
+        }
+    }
+
+    impl From<Spend> for orchard::Spend {
+        fn from(spend: Spend) -> Self {
+            Self {
+                nullifier: spend.nullifier,
+                rk: spend.rk,
+                spend_auth_sig: spend.spend_auth_sig,
+                recipient: spend.recipient,
+                value: spend.value,
+                rho: spend.rho,
+                rseed: spend.rseed,
+                note_version: spend.note_version,
+                fvk: spend.fvk,
+                witness: spend.witness,
+                alpha: spend.alpha,
+                zip32_derivation: spend.zip32_derivation,
+                dummy_sk: spend.dummy_sk,
+                proprietary: spend.proprietary,
+            }
+        }
+    }
+
+    impl From<&orchard::Spend> for Spend {
+        fn from(spend: &orchard::Spend) -> Self {
+            Self {
+                nullifier: spend.nullifier,
+                rk: spend.rk,
+                spend_auth_sig: spend.spend_auth_sig,
+                recipient: spend.recipient,
+                value: spend.value,
+                rho: spend.rho,
+                rseed: spend.rseed,
+                note_version: spend.note_version,
+                fvk: spend.fvk,
+                witness: spend.witness,
+                alpha: spend.alpha,
+                zip32_derivation: spend.zip32_derivation.clone(),
+                dummy_sk: spend.dummy_sk,
+                proprietary: spend.proprietary.clone(),
+            }
+        }
+    }
+
+    impl From<Output> for orchard::Output {
+        fn from(output: Output) -> Self {
+            Self {
+                cmx: output.cmx,
+                note_version: output.note_version,
+                ephemeral_key: output.ephemeral_key,
+                enc_ciphertext: output.enc_ciphertext,
+                out_ciphertext: output.out_ciphertext,
+                recipient: output.recipient,
+                value: output.value,
+                rseed: output.rseed,
+                ock: output.ock,
+                zip32_derivation: output.zip32_derivation,
+                user_address: output.user_address,
+                proprietary: output.proprietary,
+            }
+        }
+    }
+
+    impl From<&orchard::Output> for Output {
+        fn from(output: &orchard::Output) -> Self {
+            Self {
+                cmx: output.cmx,
+                note_version: output.note_version,
+                ephemeral_key: output.ephemeral_key,
+                enc_ciphertext: output.enc_ciphertext.clone(),
+                out_ciphertext: output.out_ciphertext.clone(),
+                recipient: output.recipient,
+                value: output.value,
+                rseed: output.rseed,
+                ock: output.ock,
+                zip32_derivation: output.zip32_derivation.clone(),
+                user_address: output.user_address.clone(),
+                proprietary: output.proprietary.clone(),
+            }
+        }
+    }
+}
+
 impl Pczt {
     /// Parses a PCZT from its encoding.
     pub fn parse(bytes: &[u8]) -> Result<Self, ParseError> {
@@ -364,7 +597,9 @@ impl Pczt {
             PCZT_VERSION_1 => postcard_from_exact::<v1::Pczt>(&bytes[8..])
                 .map(Into::into)
                 .map_err(ParseError::Invalid),
-            PCZT_VERSION_2 => postcard_from_exact(&bytes[8..]).map_err(ParseError::Invalid),
+            PCZT_VERSION_2 => postcard_from_exact::<v2::Pczt>(&bytes[8..])
+                .map(Into::into)
+                .map_err(ParseError::Invalid),
             _ => Err(ParseError::UnknownVersion(version)),
         }?;
 
@@ -384,7 +619,7 @@ impl Pczt {
         let mut bytes = vec![];
         bytes.extend_from_slice(MAGIC_BYTES);
         bytes.extend_from_slice(&PCZT_VERSION_2.to_le_bytes());
-        postcard::to_extend(self, bytes).expect("can serialize into memory")
+        postcard::to_extend(&v2::Pczt::from(self), bytes).expect("can serialize into memory")
     }
 
     /// Serializes this PCZT using the original version 1 encoding.
@@ -1535,11 +1770,7 @@ mod tests {
                 .build();
         pczt.ironwood.anchor = [1; 32];
 
-        let mut encoded = vec![];
-        encoded.extend_from_slice(MAGIC_BYTES);
-        encoded.extend_from_slice(&PCZT_VERSION_2.to_le_bytes());
-        let encoded = postcard::to_extend(&pczt, encoded).unwrap();
-
+        let encoded = pczt.serialize();
         let parsed = Pczt::parse(&encoded).unwrap();
         assert!(parsed.ironwood.actions.is_empty());
         assert_eq!(parsed.ironwood.anchor, [1; 32]);

@@ -47,6 +47,8 @@ workspace.
   note plaintext versions to V2.
 - Serialized v2 PCZTs under the NU6.3 unstable cfg now use the current schema
   with an explicit Ironwood bundle field.
+- PCZT v2 serialization now uses private versioned wire types instead of
+  deriving the postcard schema from the live `Pczt` struct.
 
 ### Fixed
 - PCZT parsing now rejects trailing bytes after v1 and v2 payloads.
