@@ -26,7 +26,7 @@ pub trait BundleView<NoteRef> {
     type Out: OutputView;
 
     /// Returns the protocol rules for the bundle.
-    fn bundle_type(&self) -> BundleProtocol;
+    fn bundle_protocol(&self) -> BundleProtocol;
     /// Returns the inputs to the bundle.
     fn inputs(&self) -> &[Self::In];
     /// Returns the outputs of the bundle.
@@ -39,7 +39,7 @@ impl<'a, NoteRef, In: InputView<NoteRef>, Out: OutputView> BundleView<NoteRef>
     type In = In;
     type Out = Out;
 
-    fn bundle_type(&self) -> BundleProtocol {
+    fn bundle_protocol(&self) -> BundleProtocol {
         self.0
     }
 
@@ -59,7 +59,7 @@ impl<NoteRef> BundleView<NoteRef> for EmptyBundleView {
     type In = Infallible;
     type Out = Infallible;
 
-    fn bundle_type(&self) -> BundleProtocol {
+    fn bundle_protocol(&self) -> BundleProtocol {
         BundleProtocol::LegacyOrchard
     }
 
