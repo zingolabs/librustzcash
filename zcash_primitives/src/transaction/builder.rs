@@ -1825,6 +1825,9 @@ mod tests {
         },
     };
 
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu6.3"))]
+    use super::orchard_action_count;
+
     #[cfg(all(
         feature = "circuits",
         zcash_unstable = "nu6.3",
@@ -1969,7 +1972,7 @@ mod tests {
 
     #[test]
     #[cfg(all(feature = "circuits", zcash_unstable = "nu6.3"))]
-    fn nu6_3_coinbase_builder_does_not_expose_orchard() {
+    fn nu6_3_coinbase_builder_uses_ironwood_not_orchard() {
         let builder = Builder::new(
             nu6_3_test_network(),
             zcash_protocol::consensus::BlockHeight::from_u32(10),
@@ -1977,6 +1980,10 @@ mod tests {
         );
 
         assert!(builder.orchard_builder.is_none());
+        assert_eq!(
+            builder.ironwood_builder.as_ref().map(|b| b.protocol()),
+            Some(orchard::BundleProtocol::IronwoodPostNu6_3)
+        );
     }
 
     #[test]
@@ -1990,6 +1997,7 @@ mod tests {
 
         assert!(builder.orchard_builder.is_none());
     }
+
     #[test]
     #[cfg(all(feature = "circuits", zcash_unstable = "nu6.3"))]
     fn orchard_action_count_includes_change_outputs() {
@@ -2222,7 +2230,7 @@ mod tests {
 
     #[test]
     #[cfg(all(feature = "circuits", zcash_unstable = "nu6.3"))]
-    fn nu6_3_coinbase_builder_has_no_orchard_output_option() {
+    fn nu6_3_coinbase_builder_has_ironwood_output_option() {
         let recipient = orchard::keys::FullViewingKey::from(
             &orchard::keys::SpendingKey::from_bytes([0; 32]).unwrap(),
         )
@@ -2241,6 +2249,23 @@ mod tests {
                 MemoBytes::empty(),
             ),
             Err(Error::OrchardBuilderNotAvailable)
+        );
+
+        builder
+            .add_ironwood_output::<Infallible>(
+                None,
+                recipient,
+                Zatoshis::const_from_u64(10_000),
+                MemoBytes::empty(),
+            )
+            .unwrap();
+        assert_eq!(
+            builder.ironwood_builder.as_ref().map(|b| b.outputs().len()),
+            Some(1)
+        );
+        assert_eq!(
+            orchard_action_count(builder.ironwood_builder.as_ref().unwrap(), true).unwrap(),
+            1
         );
     }
 
