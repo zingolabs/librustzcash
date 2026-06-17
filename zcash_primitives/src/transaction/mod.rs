@@ -651,6 +651,9 @@ impl<A: Authorization> TransactionData<A> {
     ///
     /// This shouldn't be necessary for most use cases; it is provided for handling the
     /// cross-FFI builder logic in `zcashd`.
+    ///
+    /// Under `zcash_unstable="nu6.3"`, `f_orchard` is also applied to the
+    /// Ironwood bundle because Ironwood is represented with the Orchard bundle type.
     pub fn map_bundles<B: Authorization>(
         self,
         f_transparent: impl FnOnce(
@@ -690,6 +693,9 @@ impl<A: Authorization> TransactionData<A> {
     ///
     /// This shouldn't be necessary for most use cases; it is provided for handling the
     /// transaction extraction logic in the `pczt` crate.
+    ///
+    /// Under `zcash_unstable="nu6.3"`, `f_orchard` is also applied to the
+    /// Ironwood bundle because Ironwood is represented with the Orchard bundle type.
     pub fn try_map_bundles<B: Authorization, E>(
         self,
         f_transparent: impl FnOnce(
