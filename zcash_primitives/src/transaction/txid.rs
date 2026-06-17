@@ -404,6 +404,7 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
     ) -> Self::OrchardDigest {
         orchard_bundle.map(|b| {
             b.commitment_for_domain(orchard_commitment_domain(version))
+                .expect("Orchard bundle flags must be representable in their transaction format")
                 .0
         })
     }
@@ -414,7 +415,11 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
         _version: TxVersion,
         ironwood_bundle: Option<&orchard::Bundle<A::OrchardAuth, ZatBalance>>,
     ) -> Self::IronwoodDigest {
-        ironwood_bundle.map(|b| b.commitment_for_domain(ironwood_commitment_domain()).0)
+        ironwood_bundle.map(|b| {
+            b.commitment_for_domain(ironwood_commitment_domain())
+                .expect("Ironwood bundle flags must be representable")
+                .0
+        })
     }
 
     #[cfg(zcash_unstable = "zfuture")]
