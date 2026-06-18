@@ -21,7 +21,9 @@ const INITIAL_TX_MODIFIABLE: u8 = FLAG_TRANSPARENT_INPUTS_MODIFIABLE
     | FLAG_TRANSPARENT_OUTPUTS_MODIFIABLE
     | FLAG_SHIELDED_MODIFIABLE;
 
-const ORCHARD_SPENDS_AND_OUTPUTS_ENABLED: u8 = 0b0000_0011;
+const LEGACY_ORCHARD_SPENDS_AND_OUTPUTS_ENABLED: u8 = 0b0000_0011;
+#[cfg(zcash_unstable = "nu6.3")]
+const NU6_3_ORCHARD_CROSS_ADDRESS_DISABLED: u8 = 0b0000_0011;
 
 pub struct Creator {
     tx_version: u32,
@@ -51,7 +53,7 @@ impl Creator {
             fallback_lock_time: None,
             expiry_height,
             coin_type,
-            orchard_flags: ORCHARD_SPENDS_AND_OUTPUTS_ENABLED,
+            orchard_flags: LEGACY_ORCHARD_SPENDS_AND_OUTPUTS_ENABLED,
             sapling_anchor,
             orchard_anchor,
         }
@@ -77,7 +79,7 @@ impl Creator {
             coin_type,
             sapling_anchor,
             orchard_anchor,
-            orchard_flags: ORCHARD_SPENDS_AND_OUTPUTS_ENABLED,
+            orchard_flags: NU6_3_ORCHARD_CROSS_ADDRESS_DISABLED,
             ironwood_flags: crate::IRONWOOD_SPENDS_AND_OUTPUTS_ENABLED,
             ironwood_anchor,
         }
@@ -283,12 +285,19 @@ impl Creator {
                 orchard::bundle::BundleFormat::PreNu6_3
             }
         };
+        #[cfg(zcash_unstable = "nu6.3")]
+        let default_orchard_flags = match orchard_bundle_format {
+            orchard::bundle::BundleFormat::PreNu6_3 => LEGACY_ORCHARD_SPENDS_AND_OUTPUTS_ENABLED,
+            _ => NU6_3_ORCHARD_CROSS_ADDRESS_DISABLED,
+        };
+        #[cfg(not(zcash_unstable = "nu6.3"))]
+        let default_orchard_flags = LEGACY_ORCHARD_SPENDS_AND_OUTPUTS_ENABLED;
         let orchard = parts
             .orchard
             .map(|bundle| crate::orchard::Bundle::serialize_from(bundle, orchard_bundle_format))
             .unwrap_or_else(|| crate::orchard::Bundle {
                 actions: vec![],
-                flags: ORCHARD_SPENDS_AND_OUTPUTS_ENABLED,
+                flags: default_orchard_flags,
                 value_sum: (0, true),
                 anchor: orchard::Anchor::empty_tree().to_bytes(),
                 zkproof: None,
@@ -393,6 +402,7 @@ mod tests {
 
         assert_eq!(pczt.global.tx_version, V6_TX_VERSION);
         assert_eq!(pczt.global.version_group_id, V6_VERSION_GROUP_ID);
+        assert_eq!(pczt.orchard.flags, NU6_3_ORCHARD_CROSS_ADDRESS_DISABLED);
         assert_eq!(pczt.ironwood.anchor, [1; 32]);
     }
 
