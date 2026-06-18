@@ -553,9 +553,9 @@ impl<P, U> Builder<'_, P, U> {
 
     #[cfg(zcash_unstable = "nu6.3")]
     fn ironwood_in_use(&self) -> bool {
-        self.ironwood_builder
-            .as_ref()
-            .is_some_and(|b| !b.spends().is_empty() || !b.outputs().is_empty())
+        self.ironwood_builder.as_ref().is_some_and(|b| {
+            !b.spends().is_empty() || !b.outputs().is_empty() || !b.changes().is_empty()
+        })
     }
 
     /// Checks that the given version supports all features required by the inputs and
@@ -2781,6 +2781,35 @@ mod tests {
             res.pczt_parts.consensus_branch_id,
             zcash_protocol::consensus::BranchId::Nu6_3
         );
+    }
+
+    #[test]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu6.3"))]
+    fn ironwood_change_marks_ironwood_in_use() {
+        let mut builder = Builder::new(
+            Nu63Network,
+            10u32.into(),
+            BuildConfig::Standard {
+                sapling_anchor: None,
+                orchard_anchor: None,
+            },
+        )
+        .with_ironwood_anchor(orchard::Anchor::empty_tree());
+        let fvk = orchard::keys::FullViewingKey::from(
+            &orchard::keys::SpendingKey::from_bytes([0; 32]).unwrap(),
+        );
+        let recipient = fvk.address_at(0u32, orchard::keys::Scope::Internal);
+        builder
+            .add_ironwood_change_output::<crate::transaction::fees::zip317::FeeRule>(
+                fvk,
+                None,
+                recipient,
+                Zatoshis::const_from_u64(10_000),
+                MemoBytes::empty(),
+            )
+            .unwrap();
+
+        assert!(builder.ironwood_in_use());
     }
 
     #[test]
