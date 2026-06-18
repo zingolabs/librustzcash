@@ -89,7 +89,6 @@ fn orchard_action_count_error(err: orchard::BundleActionCountError) -> &'static 
         orchard::BundleActionCountError::OutputsDisabled => {
             "Outputs are disabled, so num_outputs must be zero."
         }
-        _ => "Bundle action count could not be computed.",
     }
 }
 
@@ -278,10 +277,14 @@ impl BuildConfig {
     fn orchard_builder(&self) -> Option<orchard::builder::Builder> {
         match self {
             BuildConfig::Standard { orchard_anchor, .. } => orchard_anchor.as_ref().map(|a| {
-                orchard::builder::Builder::new(orchard::BundleProtocol::LegacyOrchard, *a)
+                orchard::builder::Builder::new(
+                    orchard::BundleKind::Transaction,
+                    orchard::BundleProtocol::OrchardPreNu6_3,
+                    *a,
+                )
             }),
             BuildConfig::Coinbase { .. } => Some(orchard::builder::Builder::new_coinbase(
-                orchard::BundleProtocol::LegacyOrchard,
+                orchard::BundleProtocol::OrchardPreNu6_3,
                 orchard::Anchor::empty_tree(),
             )),
         }
@@ -307,7 +310,9 @@ fn orchard_action_count(
             Ok(builder.protocol().coinbase_action_count(num_outputs))
         }
     } else {
-        builder.protocol().num_actions(num_spends, num_outputs)
+        builder
+            .protocol()
+            .transactional_action_count(num_spends, num_outputs)
     }
 }
 
@@ -481,9 +486,9 @@ impl<P, U> Builder<'_, P, U> {
     #[cfg(zcash_unstable = "nu6.3")]
     fn configure_orchard_builder_for_version(&mut self, version: TxVersion) {
         let protocol = if matches!(version, TxVersion::V6) {
-            orchard::BundleProtocol::Orchard
+            orchard::BundleProtocol::OrchardPostNu6_3
         } else {
-            orchard::BundleProtocol::LegacyOrchard
+            orchard::BundleProtocol::OrchardPreNu6_3
         };
 
         if let Some(builder) = &mut self.orchard_builder {
@@ -1487,7 +1492,7 @@ mod tests {
         assert_eq!(builder.tx_version, crate::transaction::TxVersion::V6);
         assert_eq!(
             builder.orchard_builder.as_ref().map(|b| b.protocol()),
-            Some(orchard::BundleProtocol::Orchard)
+            Some(orchard::BundleProtocol::OrchardPostNu6_3)
         );
     }
 
@@ -1509,7 +1514,7 @@ mod tests {
 
         assert_eq!(
             builder.orchard_builder.as_ref().map(|b| b.protocol()),
-            Some(orchard::BundleProtocol::LegacyOrchard)
+            Some(orchard::BundleProtocol::OrchardPreNu6_3)
         );
     }
 

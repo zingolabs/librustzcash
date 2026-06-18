@@ -585,7 +585,7 @@ mod tests {
                 &[] as &[Infallible],
             ),
             &(
-                orchard::BundleProtocol::LegacyOrchard,
+                orchard::BundleProtocol::OrchardPreNu6_3,
                 &[] as &[Infallible],
                 &[OrchardPayment::new(Zatoshis::const_from_u64(30000))][..],
             ),

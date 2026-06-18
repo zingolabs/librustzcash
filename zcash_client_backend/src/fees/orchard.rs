@@ -53,7 +53,7 @@ impl<NoteRef> BundleView<NoteRef> for EmptyBundleView {
     type Out = Infallible;
 
     fn bundle_protocol(&self) -> BundleProtocol {
-        BundleProtocol::LegacyOrchard
+        BundleProtocol::OrchardPreNu6_3
     }
 
     fn inputs(&self) -> &[Self::In] {

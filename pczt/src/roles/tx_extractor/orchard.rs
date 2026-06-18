@@ -7,25 +7,29 @@ pub(super) fn verify_bundle(
     orchard_vk: Option<&VerifyingKey>,
     sighash: [u8; 32],
 ) -> Result<(), OrchardError> {
-    let mut validator = orchard::bundle::BatchValidator::new();
-    let rng = OsRng;
-
-    validator.add_bundle(bundle, sighash);
-
     if let Some(vk) = orchard_vk {
-        if validator.validate(vk, rng) {
-            Ok(())
-        } else {
-            Err(OrchardError::InvalidProof)
-        }
+        verify_bundle_with_key(bundle, vk, sighash)
     } else {
         // PCZT extraction produces new transactions, which use the NU6.2 (fixed) circuit.
         let vk = VerifyingKey::build(crate::orchard::legacy_bundle_protocol().circuit_version());
-        if validator.validate(&vk, rng) {
-            Ok(())
-        } else {
-            Err(OrchardError::InvalidProof)
-        }
+        verify_bundle_with_key(bundle, &vk, sighash)
+    }
+}
+
+fn verify_bundle_with_key(
+    bundle: &Bundle<Authorized, ZatBalance>,
+    vk: &VerifyingKey,
+    sighash: [u8; 32],
+) -> Result<(), OrchardError> {
+    let mut validator = orchard::bundle::BatchValidator::new(vk);
+    validator
+        .add_bundle(bundle, sighash)
+        .map_err(|_| OrchardError::InvalidProof)?;
+
+    if validator.validate(OsRng) {
+        Ok(())
+    } else {
+        Err(OrchardError::InvalidProof)
     }
 }
 

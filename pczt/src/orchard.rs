@@ -24,7 +24,7 @@ pub(crate) fn legacy_bundle_protocol() -> orchard::BundleProtocol {
     // Treat existing PCZT Orchard data as legacy V5 Orchard for now, then
     // remove this helper when the PCZT split carries bundle format, note
     // version, and circuit version from the transaction being constructed.
-    orchard::BundleProtocol::LegacyOrchard
+    orchard::BundleProtocol::OrchardPreNu6_3
 }
 
 #[cfg(feature = "orchard")]
@@ -461,13 +461,13 @@ impl Bundle {
                 let output = orchard::pczt::Output::parse(
                     *spend.nullifier(),
                     action.output.cmx,
-                    legacy_note_version(),
                     action.output.ephemeral_key,
                     action.output.enc_ciphertext,
                     action.output.out_ciphertext,
                     action.output.recipient,
                     action.output.value,
                     action.output.rseed,
+                    legacy_note_version(),
                     action.output.ock,
                     action
                         .output
