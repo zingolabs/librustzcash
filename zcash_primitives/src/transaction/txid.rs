@@ -81,16 +81,6 @@ fn sapling_spends_noncompact_personalization(version: TxVersion) -> &'static [u8
     ZCASH_SAPLING_SPENDS_NONCOMPACT_HASH_PERSONALIZATION
 }
 
-fn sapling_txid_spends_include_anchor(version: TxVersion) -> bool {
-    #[cfg(zcash_unstable = "nu6.3")]
-    if matches!(version, TxVersion::V6) {
-        return false;
-    }
-
-    let _ = version;
-    true
-}
-
 fn sapling_auth_personalization(version: TxVersion) -> &'static [u8; 16] {
     #[cfg(zcash_unstable = "nu6.3")]
     if matches!(version, TxVersion::V6) {
@@ -258,9 +248,12 @@ pub(crate) fn hash_sapling_spends<A: sapling::bundle::Authorization>(
             ch.write_all(s_spend.nullifier().as_ref()).unwrap();
 
             nh.write_all(&s_spend.cv().to_bytes()).unwrap();
-            if sapling_txid_spends_include_anchor(version) {
+            #[cfg(zcash_unstable = "nu6.3")]
+            if !matches!(version, TxVersion::V6) {
                 nh.write_all(&s_spend.anchor().to_repr()).unwrap();
             }
+            #[cfg(not(zcash_unstable = "nu6.3"))]
+            nh.write_all(&s_spend.anchor().to_repr()).unwrap();
             nh.write_all(&<[u8; 32]>::from(*s_spend.rk())).unwrap();
         }
 
