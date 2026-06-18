@@ -93,7 +93,7 @@ impl Creator {
     #[cfg(feature = "orchard")]
     pub fn with_orchard_flags(mut self, orchard_flags: orchard::bundle::Flags) -> Self {
         self.orchard_flags = orchard_flags
-            .to_legacy_byte()
+            .to_byte(orchard::bundle::BundleFormat::PreNu6_3)
             .expect("Orchard flags must be encodable in the pre-NU6.3 format");
         self
     }
