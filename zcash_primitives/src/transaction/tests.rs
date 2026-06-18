@@ -3,13 +3,9 @@ use proptest::prelude::*;
 #[cfg(test)]
 use {
     crate::transaction::{
-        Authorization, Transaction, TransactionData, TransactionDigest, TxDigests, TxIn, TxVersion,
-        sighash::SignableInput,
-        sighash_v4::v4_signature_hash,
-        sighash_v5::v5_signature_hash,
-        testing::arb_tx,
-        transparent,
-        txid::{BlockTxCommitmentDigester, TxIdDigester, hash_sapling_spends},
+        Authorization, Transaction, TransactionData, TxDigests, TxIn, TxVersion,
+        sighash::SignableInput, sighash_v4::v4_signature_hash, sighash_v5::v5_signature_hash,
+        testing::arb_tx, transparent, txid::TxIdDigester,
     },
     ::transparent::{
         address::Script, sighash::SighashType, sighash::TransparentAuthorizingContext,
@@ -22,7 +18,11 @@ use {
 };
 
 #[cfg(all(test, zcash_unstable = "nu6.3"))]
-use crate::transaction::sighash_v6::v6_signature_hash;
+use crate::transaction::{
+    TransactionDigest,
+    sighash_v6::v6_signature_hash,
+    txid::{BlockTxCommitmentDigester, hash_sapling_spends},
+};
 
 #[cfg(all(test, zcash_unstable = "nu6.3"))]
 use blake2b_simd::Params;
