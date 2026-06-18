@@ -6,10 +6,7 @@ use corez::io::Write;
 use blake2b_simd::{Hash as Blake2bHash, Params};
 use ff::PrimeField;
 
-use ::orchard::bundle::{
-    self as orchard,
-    commitments::{AnchorCommitment, BundleCommitmentDomain},
-};
+use ::orchard::bundle::{self as orchard, commitments::BundleCommitmentDomain};
 use ::sapling::bundle::{OutputDescription, SpendDescription};
 use ::transparent::bundle::{self as transparent, TxIn, TxOut};
 use zcash_protocol::{
@@ -101,60 +98,24 @@ fn sapling_auth_includes_anchor(version: TxVersion) -> bool {
     false
 }
 
-fn orchard_txid_anchor_commitment(version: TxVersion) -> AnchorCommitment {
+fn orchard_commitment_domain(version: TxVersion) -> BundleCommitmentDomain {
     #[cfg(zcash_unstable = "nu6.3")]
     if matches!(version, TxVersion::V6) {
-        return AnchorCommitment::Omit;
-    }
-
-    let _ = version;
-    AnchorCommitment::Include
-}
-
-fn orchard_auth_anchor_commitment(version: TxVersion) -> AnchorCommitment {
-    #[cfg(zcash_unstable = "nu6.3")]
-    if matches!(version, TxVersion::V6) {
-        return AnchorCommitment::Include;
-    }
-
-    let _ = version;
-    AnchorCommitment::Omit
-}
-
-fn orchard_bundle_format(version: TxVersion) -> orchard::BundleFormat {
-    #[cfg(zcash_unstable = "nu6.3")]
-    if matches!(version, TxVersion::V6) {
-        return orchard::BundleFormat::Nu6_3;
+        return BundleCommitmentDomain::ORCHARD_V6;
     }
 
     #[cfg(zcash_unstable = "zfuture")]
     if matches!(version, TxVersion::ZFuture) {
-        return orchard::BundleFormat::Nu6_3;
+        return BundleCommitmentDomain::ORCHARD_V5_NU6_3;
     }
 
     let _ = version;
-    orchard::BundleFormat::PreNu6_3
-}
-
-fn orchard_commitment_domain(version: TxVersion) -> BundleCommitmentDomain {
-    #[cfg(zcash_unstable = "nu6.3")]
-    if matches!(version, TxVersion::V6) {
-        return BundleCommitmentDomain::orchard_v6(
-            orchard_txid_anchor_commitment(version),
-            orchard_auth_anchor_commitment(version),
-        );
-    }
-
-    BundleCommitmentDomain::orchard(
-        orchard_bundle_format(version),
-        orchard_txid_anchor_commitment(version),
-        orchard_auth_anchor_commitment(version),
-    )
+    BundleCommitmentDomain::ORCHARD_V5_PRE_NU6_3
 }
 
 #[cfg(zcash_unstable = "nu6.3")]
-fn ironwood_commitment_domain() -> BundleCommitmentDomain {
-    BundleCommitmentDomain::ironwood(AnchorCommitment::Omit, AnchorCommitment::Include)
+fn ironwood_v6_domain() -> BundleCommitmentDomain {
+    BundleCommitmentDomain::IRONWOOD_V6
 }
 
 fn hasher(personal: &[u8; 16]) -> StateWrite {
@@ -469,7 +430,7 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
         ironwood_bundle: Option<&orchard::Bundle<A::OrchardAuth, ZatBalance>>,
     ) -> Self::IronwoodDigest {
         ironwood_bundle.map(|b| {
-            b.commitment_for_domain(ironwood_commitment_domain())
+            b.commitment_for_domain(ironwood_v6_domain())
                 .expect("Ironwood bundle flags must be representable")
                 .0
         })
@@ -583,9 +544,7 @@ pub(crate) fn to_hash_v6(
     h.write_all(
         ironwood_digest
             .unwrap_or_else(|| {
-                orchard::commitments::hash_bundle_txid_empty_with_domain(
-                    ironwood_commitment_domain(),
-                )
+                orchard::commitments::hash_bundle_txid_empty_with_domain(ironwood_v6_domain())
             })
             .as_bytes(),
     )
@@ -743,15 +702,8 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
         ironwood_bundle: Option<&orchard::Bundle<orchard::Authorized, ZatBalance>>,
     ) -> Self::IronwoodDigest {
         ironwood_bundle.map_or_else(
-            || {
-                orchard::commitments::hash_bundle_auth_empty_with_domain(
-                    ironwood_commitment_domain(),
-                )
-            },
-            |b| {
-                b.authorizing_commitment_for_domain(ironwood_commitment_domain())
-                    .0
-            },
+            || orchard::commitments::hash_bundle_auth_empty_with_domain(ironwood_v6_domain()),
+            |b| b.authorizing_commitment_for_domain(ironwood_v6_domain()).0,
         )
     }
 
