@@ -273,8 +273,8 @@ impl BuildConfig {
         }
     }
 
-    /// Returns the Orchard builder for this configuration.
-    fn orchard_builder(&self) -> Option<orchard::builder::Builder> {
+    /// Returns the legacy Orchard builder for this configuration.
+    fn legacy_orchard_builder(&self) -> Option<orchard::builder::Builder> {
         match self {
             BuildConfig::Standard { orchard_anchor, .. } => orchard_anchor.as_ref().map(|a| {
                 orchard::builder::Builder::new(
@@ -524,7 +524,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         let orchard_builder = if orchard_builder_available
             && params.is_nu_active(NetworkUpgrade::Nu5, target_height)
         {
-            build_config.orchard_builder()
+            build_config.legacy_orchard_builder()
         } else {
             None
         };
