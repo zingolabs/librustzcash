@@ -5283,13 +5283,26 @@ fn sent_output_pool_code(
     output_note: Option<&Note>,
 ) -> i64 {
     if pool_type == PoolType::ORCHARD
-        && (note_commitment_tree == Some(NoteCommitmentTree::Ironwood)
+        && (note_commitment_tree_is_ironwood(note_commitment_tree)
             || note_is_ironwood(output_note)
             || recipient_note_is_ironwood(recipient))
     {
         IRONWOOD_POOL_CODE
     } else {
         pool_code(pool_type)
+    }
+}
+
+fn note_commitment_tree_is_ironwood(note_commitment_tree: Option<NoteCommitmentTree>) -> bool {
+    #[cfg(feature = "orchard")]
+    {
+        note_commitment_tree == Some(NoteCommitmentTree::Ironwood)
+    }
+
+    #[cfg(not(feature = "orchard"))]
+    {
+        let _ = note_commitment_tree;
+        false
     }
 }
 
