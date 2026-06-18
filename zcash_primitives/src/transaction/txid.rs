@@ -55,6 +55,8 @@ const ZCASH_TZE_OUTPUTS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdTZEOutsHash";
 const ZCASH_SAPLING_SPENDS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdSSpendsHash";
 const ZCASH_SAPLING_SPENDS_COMPACT_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdSSpendCHash";
 const ZCASH_SAPLING_SPENDS_NONCOMPACT_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdSSpendNHash";
+#[cfg(zcash_unstable = "nu6.3")]
+const ZCASH_SAPLING_SPENDS_V6_NONCOMPACT_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdSSpendNH_v6";
 
 const ZCASH_SAPLING_OUTPUTS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdSOutputHash";
 const ZCASH_SAPLING_OUTPUTS_COMPACT_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdSOutC__Hash";
@@ -64,8 +66,50 @@ const ZCASH_SAPLING_OUTPUTS_NONCOMPACT_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxId
 const ZCASH_AUTH_PERSONALIZATION_PREFIX: &[u8; 12] = b"ZTxAuthHash_";
 const ZCASH_TRANSPARENT_SCRIPTS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxAuthTransHash";
 const ZCASH_SAPLING_SIGS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxAuthSapliHash";
+#[cfg(zcash_unstable = "nu6.3")]
+const ZCASH_SAPLING_V6_SIGS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxAuthSapliH_v6";
 #[cfg(zcash_unstable = "zfuture")]
 const ZCASH_TZE_WITNESSES_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxAuthTZE__Hash";
+
+fn sapling_spends_noncompact_personalization(version: TxVersion) -> &'static [u8; 16] {
+    #[cfg(zcash_unstable = "nu6.3")]
+    if matches!(version, TxVersion::V6) {
+        return ZCASH_SAPLING_SPENDS_V6_NONCOMPACT_HASH_PERSONALIZATION;
+    }
+
+    let _ = version;
+    ZCASH_SAPLING_SPENDS_NONCOMPACT_HASH_PERSONALIZATION
+}
+
+fn sapling_txid_spends_include_anchor(version: TxVersion) -> bool {
+    #[cfg(zcash_unstable = "nu6.3")]
+    if matches!(version, TxVersion::V6) {
+        return false;
+    }
+
+    let _ = version;
+    true
+}
+
+fn sapling_auth_personalization(version: TxVersion) -> &'static [u8; 16] {
+    #[cfg(zcash_unstable = "nu6.3")]
+    if matches!(version, TxVersion::V6) {
+        return ZCASH_SAPLING_V6_SIGS_HASH_PERSONALIZATION;
+    }
+
+    let _ = version;
+    ZCASH_SAPLING_SIGS_HASH_PERSONALIZATION
+}
+
+fn sapling_auth_includes_anchor(version: TxVersion) -> bool {
+    #[cfg(zcash_unstable = "nu6.3")]
+    if matches!(version, TxVersion::V6) {
+        return true;
+    }
+
+    let _ = version;
+    false
+}
 
 fn orchard_txid_anchor_commitment(version: TxVersion) -> AnchorCommitment {
     #[cfg(zcash_unstable = "nu6.3")]
@@ -103,6 +147,14 @@ fn orchard_bundle_format(version: TxVersion) -> orchard::BundleFormat {
 }
 
 fn orchard_commitment_domain(version: TxVersion) -> BundleCommitmentDomain {
+    #[cfg(zcash_unstable = "nu6.3")]
+    if matches!(version, TxVersion::V6) {
+        return BundleCommitmentDomain::orchard_v6(
+            orchard_txid_anchor_commitment(version),
+            orchard_auth_anchor_commitment(version),
+        );
+    }
+
     BundleCommitmentDomain::orchard(
         orchard_bundle_format(version),
         orchard_txid_anchor_commitment(version),
@@ -187,22 +239,28 @@ pub(crate) fn hash_tze_outputs(tze_outputs: &[TzeOut]) -> Blake2bHash {
 ///
 /// Write disjoint parts of each Sapling shielded spend to a pair of hashes:
 /// * \[nullifier*\] - personalized with ZCASH_SAPLING_SPENDS_COMPACT_HASH_PERSONALIZATION
-/// * \[(cv, anchor, rk, zkproof)*\] - personalized with ZCASH_SAPLING_SPENDS_NONCOMPACT_HASH_PERSONALIZATION
+/// * \[(cv, anchor, rk)*\] for pre-v6 transactions, personalized with
+///   ZCASH_SAPLING_SPENDS_NONCOMPACT_HASH_PERSONALIZATION
+/// * \[(cv, rk)*\] for v6 transactions, personalized with
+///   ZCASH_SAPLING_SPENDS_V6_NONCOMPACT_HASH_PERSONALIZATION
 ///
 /// Then, hash these together personalized by ZCASH_SAPLING_SPENDS_HASH_PERSONALIZATION
 pub(crate) fn hash_sapling_spends<A: sapling::bundle::Authorization>(
+    version: TxVersion,
     shielded_spends: &[SpendDescription<A>],
 ) -> Blake2bHash {
     let mut h = hasher(ZCASH_SAPLING_SPENDS_HASH_PERSONALIZATION);
     if !shielded_spends.is_empty() {
         let mut ch = hasher(ZCASH_SAPLING_SPENDS_COMPACT_HASH_PERSONALIZATION);
-        let mut nh = hasher(ZCASH_SAPLING_SPENDS_NONCOMPACT_HASH_PERSONALIZATION);
+        let mut nh = hasher(sapling_spends_noncompact_personalization(version));
         for s_spend in shielded_spends {
             // we build the hash of nullifiers separately for compact blocks.
             ch.write_all(s_spend.nullifier().as_ref()).unwrap();
 
             nh.write_all(&s_spend.cv().to_bytes()).unwrap();
-            nh.write_all(&s_spend.anchor().to_repr()).unwrap();
+            if sapling_txid_spends_include_anchor(version) {
+                nh.write_all(&s_spend.anchor().to_repr()).unwrap();
+            }
             nh.write_all(&<[u8; 32]>::from(*s_spend.rk())).unwrap();
         }
 
@@ -310,11 +368,12 @@ pub(crate) fn hash_transparent_txid_data(
 
 /// Implements [ZIP 244 section T.3](https://zips.z.cash/zip-0244#t-3-sapling-digest)
 fn hash_sapling_txid_data<A: sapling::bundle::Authorization>(
+    version: TxVersion,
     bundle: &sapling::Bundle<A, ZatBalance>,
 ) -> Blake2bHash {
     let mut h = hasher(ZCASH_SAPLING_HASH_PERSONALIZATION);
     if !(bundle.shielded_spends().is_empty() && bundle.shielded_outputs().is_empty()) {
-        h.write_all(hash_sapling_spends(bundle.shielded_spends()).as_bytes())
+        h.write_all(hash_sapling_spends(version, bundle.shielded_spends()).as_bytes())
             .unwrap();
 
         h.write_all(hash_sapling_outputs(bundle.shielded_outputs()).as_bytes())
@@ -392,9 +451,10 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
 
     fn digest_sapling(
         &self,
+        version: TxVersion,
         sapling_bundle: Option<&sapling::Bundle<A::SaplingAuth, ZatBalance>>,
     ) -> Self::SaplingDigest {
-        sapling_bundle.map(hash_sapling_txid_data)
+        sapling_bundle.map(|bundle| hash_sapling_txid_data(version, bundle))
     }
 
     fn digest_orchard(
@@ -636,9 +696,10 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
 
     fn digest_sapling(
         &self,
+        version: TxVersion,
         sapling_bundle: Option<&sapling::Bundle<sapling::bundle::Authorized, ZatBalance>>,
     ) -> Blake2bHash {
-        let mut h = hasher(ZCASH_SAPLING_SIGS_HASH_PERSONALIZATION);
+        let mut h = hasher(sapling_auth_personalization(version));
         if let Some(bundle) = sapling_bundle {
             for spend in bundle.shielded_spends() {
                 h.write_all(spend.zkproof()).unwrap();
@@ -655,6 +716,11 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
 
             h.write_all(&<[u8; 64]>::from(bundle.authorization().binding_sig))
                 .unwrap();
+
+            if sapling_auth_includes_anchor(version) && !bundle.shielded_spends().is_empty() {
+                h.write_all(bundle.shielded_spends()[0].anchor().to_repr().as_ref())
+                    .unwrap();
+            }
         }
         h.finalize()
     }

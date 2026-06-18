@@ -31,6 +31,12 @@ workspace.
   - NU6.3 coinbase builders no longer expose Orchard outputs.
 - `TransactionDigest::digest_orchard` now receives `TxVersion`, so digest
   implementations can distinguish Orchard commitments by transaction format.
+- `TransactionDigest::digest_sapling` now receives `TxVersion`, so digest
+  implementations can distinguish Sapling commitments by transaction format.
+
+### Fixed
+- V6 transaction IDs and authorizing commitments now use the v6 Sapling,
+  Orchard, and Ironwood digest domains.
 
 ## [0.28.0] - 2026-06-02
 

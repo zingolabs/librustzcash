@@ -622,7 +622,7 @@ impl<A: Authorization> TransactionData<A> {
                 &self.zip233_amount,
             ),
             digester.digest_transparent(self.transparent_bundle.as_ref()),
-            digester.digest_sapling(self.sapling_bundle.as_ref()),
+            digester.digest_sapling(self.version, self.sapling_bundle.as_ref()),
             digester.digest_orchard(self.version, self.orchard_bundle.as_ref()),
             #[cfg(zcash_unstable = "nu6.3")]
             digester.digest_ironwood(self.version, self.ironwood_bundle.as_ref()),
@@ -1341,6 +1341,7 @@ pub trait TransactionDigest<A: Authorization> {
 
     fn digest_sapling(
         &self,
+        version: TxVersion,
         sapling_bundle: Option<&sapling::Bundle<A::SaplingAuth, ZatBalance>>,
     ) -> Self::SaplingDigest;
 

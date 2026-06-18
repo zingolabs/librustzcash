@@ -3,9 +3,13 @@ use proptest::prelude::*;
 #[cfg(test)]
 use {
     crate::transaction::{
-        Authorization, Transaction, TransactionData, TxDigests, TxIn, TxVersion,
-        sighash::SignableInput, sighash_v4::v4_signature_hash, sighash_v5::v5_signature_hash,
-        testing::arb_tx, transparent, txid::TxIdDigester,
+        Authorization, Transaction, TransactionData, TransactionDigest, TxDigests, TxIn, TxVersion,
+        sighash::SignableInput,
+        sighash_v4::v4_signature_hash,
+        sighash_v5::v5_signature_hash,
+        testing::arb_tx,
+        transparent,
+        txid::{BlockTxCommitmentDigester, TxIdDigester, hash_sapling_spends},
     },
     ::transparent::{
         address::Script, sighash::SighashType, sighash::TransparentAuthorizingContext,
@@ -22,6 +26,9 @@ use crate::transaction::sighash_v6::v6_signature_hash;
 
 #[cfg(all(test, zcash_unstable = "nu6.3"))]
 use blake2b_simd::Params;
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
+use ff::PrimeField;
 
 #[cfg(all(test, zcash_unstable = "nu6.3"))]
 use zcash_protocol::value::ZatBalance;
@@ -96,7 +103,32 @@ fn v5_auth_commitment_in_nu6_3_does_not_include_ironwood_digest() {
 
 #[cfg(all(test, zcash_unstable = "nu6.3"))]
 #[test]
-fn v6_empty_orchard_txid_uses_standard_orchard_personalization() {
+fn v6_empty_auth_commitment_uses_v6_shielded_personalizations() {
+    fn empty_hash(personal: &[u8; 16]) -> Blake2bHash {
+        Params::new().hash_length(32).personal(personal).hash(&[])
+    }
+
+    let mut personal = [0; 16];
+    personal[..12].copy_from_slice(b"ZTxAuthHash_");
+    personal[12..].copy_from_slice(&u32::from(BranchId::Nu6_3).to_le_bytes());
+
+    let mut expected = Params::new().hash_length(32).personal(&personal).to_state();
+    expected.update(empty_hash(b"ZTxAuthTransHash").as_bytes());
+    expected.update(empty_hash(b"ZTxAuthSapliH_v6").as_bytes());
+    expected.update(empty_hash(b"ZTxAuthOrchaH_v6").as_bytes());
+    expected.update(empty_hash(b"ZTxAuthIrnwdH_v6").as_bytes());
+
+    let tx =
+        TransactionData::from_parts_v6(BranchId::Nu6_3, 0, 0u32.into(), None, None, None, None)
+            .freeze()
+            .unwrap();
+
+    assert_eq!(tx.auth_commitment(), expected.finalize());
+}
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
+#[test]
+fn v6_empty_orchard_txid_uses_v6_orchard_personalization() {
     fn empty_hash(personal: &[u8; 16]) -> Blake2bHash {
         Params::new().hash_length(32).personal(personal).hash(&[])
     }
@@ -117,8 +149,8 @@ fn v6_empty_orchard_txid_uses_standard_orchard_personalization() {
     expected.update(txid_parts.header_digest.as_bytes());
     expected.update(empty_hash(b"ZTxIdTranspaHash").as_bytes());
     expected.update(empty_hash(b"ZTxIdSaplingHash").as_bytes());
-    expected.update(empty_hash(b"ZTxIdOrchardHash").as_bytes());
-    expected.update(empty_hash(b"ZTxIdIronwd_Hash").as_bytes());
+    expected.update(empty_hash(b"ZTxIdOrchardH_v6").as_bytes());
+    expected.update(empty_hash(b"ZTxIdIronwd_H_v6").as_bytes());
 
     let expected = expected.finalize();
     assert_eq!(&tx.txid().as_ref()[..], expected.as_bytes());
@@ -221,6 +253,80 @@ fn bundle_with_anchor(
 }
 
 #[cfg(all(test, zcash_unstable = "nu6.3"))]
+fn test_sapling_anchor(byte: u8) -> bls12_381::Scalar {
+    bls12_381::Scalar::from(u64::from(byte))
+}
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
+fn test_sapling_bundle(
+    runner: &mut proptest::test_runner::TestRunner,
+) -> sapling::Bundle<sapling::bundle::Authorized, ZatBalance> {
+    use proptest::strategy::ValueTree;
+
+    let bundle_strategy =
+        crate::transaction::components::sapling::testing::arb_bundle_for_version(TxVersion::V6);
+
+    for _ in 0..100 {
+        if let Some(bundle) = bundle_strategy.new_tree(runner).unwrap().current() {
+            if !bundle.shielded_spends().is_empty() {
+                return bundle;
+            }
+        }
+    }
+
+    panic!("Sapling bundle strategy should generate a bundle with spends");
+}
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
+fn test_sapling_output_only_bundle(
+    runner: &mut proptest::test_runner::TestRunner,
+) -> sapling::Bundle<sapling::bundle::Authorized, ZatBalance> {
+    use proptest::strategy::ValueTree;
+
+    let bundle_strategy =
+        crate::transaction::components::sapling::testing::arb_bundle_for_version(TxVersion::V6);
+
+    for _ in 0..1000 {
+        if let Some(bundle) = bundle_strategy.new_tree(runner).unwrap().current() {
+            if bundle.shielded_spends().is_empty() && !bundle.shielded_outputs().is_empty() {
+                return bundle;
+            }
+        }
+    }
+
+    panic!("Sapling bundle strategy should generate an output-only bundle");
+}
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
+fn sapling_bundle_with_anchor(
+    bundle: &sapling::Bundle<sapling::bundle::Authorized, ZatBalance>,
+    anchor: bls12_381::Scalar,
+) -> sapling::Bundle<sapling::bundle::Authorized, ZatBalance> {
+    let spends = bundle
+        .shielded_spends()
+        .iter()
+        .map(|spend| {
+            sapling::bundle::SpendDescription::from_parts(
+                spend.cv().clone(),
+                anchor,
+                spend.nullifier().clone(),
+                spend.rk().clone(),
+                spend.zkproof().clone(),
+                spend.spend_auth_sig().clone(),
+            )
+        })
+        .collect();
+
+    sapling::Bundle::from_parts(
+        spends,
+        bundle.shielded_outputs().to_vec(),
+        *bundle.value_balance(),
+        bundle.authorization().clone(),
+    )
+    .expect("test bundle has Sapling spends")
+}
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
 fn tx_bytes(tx: &Transaction) -> Vec<u8> {
     let mut encoded = Vec::new();
     tx.write(&mut encoded).unwrap();
@@ -262,6 +368,40 @@ fn v5_tx_data_with_orchard_bundle(
 }
 
 #[cfg(all(test, zcash_unstable = "nu6.3"))]
+fn v5_tx_with_sapling_bundle(
+    sapling_bundle: sapling::Bundle<sapling::bundle::Authorized, ZatBalance>,
+) -> Transaction {
+    TransactionData::<crate::transaction::Authorized>::from_parts(
+        TxVersion::V5,
+        BranchId::Nu5,
+        0,
+        1u32.into(),
+        None,
+        None,
+        Some(sapling_bundle),
+        None,
+    )
+    .freeze()
+    .unwrap()
+}
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
+fn v5_tx_data_with_sapling_bundle(
+    sapling_bundle: sapling::Bundle<sapling::bundle::Authorized, ZatBalance>,
+) -> TransactionData<TestUnauthorized> {
+    TransactionData::from_parts(
+        TxVersion::V5,
+        BranchId::Nu5,
+        0,
+        1u32.into(),
+        None,
+        None,
+        Some(sapling_bundle),
+        None,
+    )
+}
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
 fn v6_tx_with_orchard_bundle(
     orchard_bundle: orchard::Bundle<orchard::bundle::Authorized, ZatBalance>,
 ) -> Transaction {
@@ -276,6 +416,38 @@ fn v6_tx_with_orchard_bundle(
     )
     .freeze()
     .unwrap()
+}
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
+fn v6_tx_with_sapling_bundle(
+    sapling_bundle: sapling::Bundle<sapling::bundle::Authorized, ZatBalance>,
+) -> Transaction {
+    TransactionData::<crate::transaction::Authorized>::from_parts_v6(
+        BranchId::Nu6_3,
+        0,
+        1u32.into(),
+        None,
+        Some(sapling_bundle),
+        None,
+        None,
+    )
+    .freeze()
+    .unwrap()
+}
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
+fn v6_tx_data_with_sapling_bundle(
+    sapling_bundle: sapling::Bundle<sapling::bundle::Authorized, ZatBalance>,
+) -> TransactionData<TestUnauthorized> {
+    TransactionData::from_parts_v6(
+        BranchId::Nu6_3,
+        0,
+        1u32.into(),
+        None,
+        Some(sapling_bundle),
+        None,
+        None,
+    )
 }
 
 #[cfg(all(test, zcash_unstable = "nu6.3"))]
@@ -400,6 +572,145 @@ fn v5_orchard_anchor_still_changes_txid_and_sighash() {
         v5_shielded_sighash(&tx_data_b)
     );
     assert_eq!(tx_a.auth_commitment(), tx_b.auth_commitment());
+}
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
+#[test]
+fn v6_sapling_anchor_changes_auth_commitment_not_txid_or_sighash() {
+    let mut runner = proptest::test_runner::TestRunner::default();
+    let bundle = test_sapling_bundle(&mut runner);
+
+    let bundle_a = sapling_bundle_with_anchor(&bundle, test_sapling_anchor(1));
+    let bundle_b = sapling_bundle_with_anchor(&bundle, test_sapling_anchor(2));
+    let tx_data_a = v6_tx_data_with_sapling_bundle(bundle_a.clone());
+    let tx_data_b = v6_tx_data_with_sapling_bundle(bundle_b.clone());
+    let tx_a = v6_tx_with_sapling_bundle(bundle_a);
+    let tx_b = v6_tx_with_sapling_bundle(bundle_b);
+
+    assert_ne!(tx_bytes(&tx_a), tx_bytes(&tx_b));
+    assert_eq!(tx_a.txid(), tx_b.txid());
+    assert_eq!(
+        v6_shielded_sighash(&tx_data_a),
+        v6_shielded_sighash(&tx_data_b)
+    );
+    assert_ne!(tx_a.auth_commitment(), tx_b.auth_commitment());
+}
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
+#[test]
+fn v5_sapling_anchor_still_changes_txid_and_sighash() {
+    let mut runner = proptest::test_runner::TestRunner::default();
+    let bundle = test_sapling_bundle(&mut runner);
+
+    let bundle_a = sapling_bundle_with_anchor(&bundle, test_sapling_anchor(1));
+    let bundle_b = sapling_bundle_with_anchor(&bundle, test_sapling_anchor(2));
+    let tx_data_a = v5_tx_data_with_sapling_bundle(bundle_a.clone());
+    let tx_data_b = v5_tx_data_with_sapling_bundle(bundle_b.clone());
+    let tx_a = v5_tx_with_sapling_bundle(bundle_a);
+    let tx_b = v5_tx_with_sapling_bundle(bundle_b);
+
+    assert_ne!(tx_a.txid(), tx_b.txid());
+    assert_ne!(
+        v5_shielded_sighash(&tx_data_a),
+        v5_shielded_sighash(&tx_data_b)
+    );
+    assert_eq!(tx_a.auth_commitment(), tx_b.auth_commitment());
+}
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
+#[test]
+fn v6_sapling_spends_digest_uses_v6_noncompact_domain_without_anchor() {
+    let mut runner = proptest::test_runner::TestRunner::default();
+    let bundle = test_sapling_bundle(&mut runner);
+
+    let mut h = Params::new()
+        .hash_length(32)
+        .personal(b"ZTxIdSSpendsHash")
+        .to_state();
+    let mut ch = Params::new()
+        .hash_length(32)
+        .personal(b"ZTxIdSSpendCHash")
+        .to_state();
+    let mut nh = Params::new()
+        .hash_length(32)
+        .personal(b"ZTxIdSSpendNH_v6")
+        .to_state();
+
+    for spend in bundle.shielded_spends() {
+        ch.update(spend.nullifier().as_ref());
+        nh.update(&spend.cv().to_bytes());
+        nh.update(&<[u8; 32]>::from(*spend.rk()));
+    }
+
+    h.update(ch.finalize().as_bytes());
+    h.update(nh.finalize().as_bytes());
+
+    assert_eq!(
+        hash_sapling_spends(TxVersion::V6, bundle.shielded_spends()),
+        h.finalize()
+    );
+
+    let bundle_a = sapling_bundle_with_anchor(&bundle, test_sapling_anchor(1));
+    let bundle_b = sapling_bundle_with_anchor(&bundle, test_sapling_anchor(2));
+    assert_eq!(
+        hash_sapling_spends(TxVersion::V6, bundle_a.shielded_spends()),
+        hash_sapling_spends(TxVersion::V6, bundle_b.shielded_spends())
+    );
+}
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
+#[test]
+fn v6_sapling_auth_digest_uses_v6_domain_and_appends_anchor() {
+    let mut runner = proptest::test_runner::TestRunner::default();
+    let bundle = test_sapling_bundle(&mut runner);
+
+    let mut h = Params::new()
+        .hash_length(32)
+        .personal(b"ZTxAuthSapliH_v6")
+        .to_state();
+    for spend in bundle.shielded_spends() {
+        h.update(spend.zkproof());
+    }
+    for spend in bundle.shielded_spends() {
+        h.update(&<[u8; 64]>::from(*spend.spend_auth_sig()));
+    }
+    for output in bundle.shielded_outputs() {
+        h.update(output.zkproof());
+    }
+    h.update(&<[u8; 64]>::from(bundle.authorization().binding_sig));
+    h.update(bundle.shielded_spends()[0].anchor().to_repr().as_ref());
+
+    let actual = TransactionDigest::<crate::transaction::Authorized>::digest_sapling(
+        &BlockTxCommitmentDigester,
+        TxVersion::V6,
+        Some(&bundle),
+    );
+
+    assert_eq!(actual, h.finalize());
+}
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
+#[test]
+fn v6_sapling_output_only_auth_digest_uses_v6_domain_without_anchor() {
+    let mut runner = proptest::test_runner::TestRunner::default();
+    let bundle = test_sapling_output_only_bundle(&mut runner);
+
+    let mut h = Params::new()
+        .hash_length(32)
+        .personal(b"ZTxAuthSapliH_v6")
+        .to_state();
+    for output in bundle.shielded_outputs() {
+        h.update(output.zkproof());
+    }
+    h.update(&<[u8; 64]>::from(bundle.authorization().binding_sig));
+
+    let actual = TransactionDigest::<crate::transaction::Authorized>::digest_sapling(
+        &BlockTxCommitmentDigester,
+        TxVersion::V6,
+        Some(&bundle),
+    );
+
+    assert_eq!(actual, h.finalize());
 }
 
 #[cfg(all(test, zcash_unstable = "nu6.3"))]
