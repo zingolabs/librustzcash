@@ -780,12 +780,11 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
         self.orchard_builder
             .as_mut()
             .ok_or(Error::OrchardBuilderNotAvailable)?
-            .add_output_with_version(
+            .add_output(
                 ovk,
                 recipient,
                 orchard::value::NoteValue::from_raw(value.into()),
                 memo.into_bytes(),
-                orchard::note::NoteVersion::V2,
             )
             .map_err(Error::OrchardRecipient)
     }
@@ -859,12 +858,11 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
         self.ironwood_builder
             .as_mut()
             .ok_or(Error::IronwoodBuilderNotAvailable)?
-            .add_output_with_version(
+            .add_output(
                 ovk,
                 recipient,
                 orchard::value::NoteValue::from_raw(value.into()),
                 memo.into_bytes(),
-                orchard::note::NoteVersion::V3,
             )
             .map_err(Error::IronwoodRecipient)
     }
