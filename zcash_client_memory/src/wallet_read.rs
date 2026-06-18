@@ -617,7 +617,7 @@ impl<P: consensus::Parameters> WalletRead for MemoryWalletDb<P> {
                             consensus_branch_id,
                             tx_data.lock_time(),
                             expiry_height,
-                            #[cfg(all(zcash_unstable = "zfuture", feature = "zip-233"))]
+                            #[cfg(all(any(zcash_unstable = "nu7", zcash_unstable = "zfuture"), feature = "zip-233"))]
                             tx_data.zip233_amount(),
                             tx_data.transparent_bundle().cloned(),
                             tx_data.sprout_bundle().cloned(),
@@ -632,7 +632,7 @@ impl<P: consensus::Parameters> WalletRead for MemoryWalletDb<P> {
                         consensus_branch_id,
                         tx_data.lock_time(),
                         expiry_height,
-                        #[cfg(all(zcash_unstable = "zfuture", feature = "zip-233"))]
+                        #[cfg(all(any(zcash_unstable = "nu7", zcash_unstable = "zfuture"), feature = "zip-233"))]
                         tx_data.zip233_amount(),
                         tx_data.transparent_bundle().cloned(),
                         tx_data.sprout_bundle().cloned(),
