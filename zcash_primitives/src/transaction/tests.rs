@@ -309,10 +309,10 @@ fn sapling_bundle_with_anchor(
             sapling::bundle::SpendDescription::from_parts(
                 spend.cv().clone(),
                 anchor,
-                spend.nullifier().clone(),
-                spend.rk().clone(),
-                spend.zkproof().clone(),
-                spend.spend_auth_sig().clone(),
+                *spend.nullifier(),
+                *spend.rk(),
+                *spend.zkproof(),
+                *spend.spend_auth_sig(),
             )
         })
         .collect();
@@ -321,7 +321,7 @@ fn sapling_bundle_with_anchor(
         spends,
         bundle.shielded_outputs().to_vec(),
         *bundle.value_balance(),
-        bundle.authorization().clone(),
+        *bundle.authorization(),
     )
     .expect("test bundle has Sapling spends")
 }
