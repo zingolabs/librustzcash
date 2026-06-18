@@ -33,7 +33,7 @@ use serde::Deserialize;
 use zcash_protocol::constants::{V6_TX_VERSION, V6_VERSION_GROUP_ID};
 #[cfg(all(
     any(feature = "io-finalizer", feature = "signer", feature = "tx-extractor"),
-    zcash_unstable = "zfuture",
+    any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
     feature = "zip-233",
 ))]
 use zcash_protocol::value::Zatoshis;
@@ -824,7 +824,10 @@ impl Pczt {
             consensus_branch_id,
             lock_time,
             global.expiry_height.into(),
-            #[cfg(all(zcash_unstable = "zfuture", feature = "zip-233"))]
+            #[cfg(all(
+                any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
+                feature = "zip-233"
+            ))]
             Zatoshis::ZERO,
             transparent_bundle,
             None,
@@ -839,7 +842,10 @@ impl Pczt {
                 consensus_branch_id,
                 lock_time,
                 global.expiry_height.into(),
-                #[cfg(all(zcash_unstable = "zfuture", feature = "zip-233"))]
+                #[cfg(all(
+                    any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
+                    feature = "zip-233"
+                ))]
                 Zatoshis::ZERO,
                 transparent_bundle,
                 None,
