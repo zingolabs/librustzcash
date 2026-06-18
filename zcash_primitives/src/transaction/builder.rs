@@ -348,26 +348,6 @@ impl BuildConfig {
         }
     }
 
-    /// Returns the Ironwood builder for this configuration.
-    #[cfg(zcash_unstable = "nu6.3")]
-    fn ironwood_builder(&self) -> Option<orchard::builder::Builder> {
-        match self {
-            BuildConfig::Standard {
-                ironwood_anchor, ..
-            } => ironwood_anchor.as_ref().map(|a| {
-                orchard::builder::Builder::new(
-                    orchard::BundleKind::Transaction,
-                    orchard::BundleProtocol::IronwoodPostNu6_3,
-                    *a,
-                )
-            }),
-            BuildConfig::Coinbase { .. } => Some(orchard::builder::Builder::new_coinbase(
-                orchard::BundleProtocol::IronwoodPostNu6_3,
-                orchard::Anchor::empty_tree(),
-            )),
-        }
-    }
-
     /// Returns `true` if this configuration is for building a coinbase transaction.
     pub fn is_coinbase(&self) -> bool {
         matches!(self, BuildConfig::Coinbase { .. })
