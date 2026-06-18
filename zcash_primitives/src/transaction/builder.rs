@@ -1179,7 +1179,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
     #[allow(unused_mut)]
     #[cfg(feature = "circuits")]
     pub fn build<R: RngCore + CryptoRng, SP: SpendProver, OP: OutputProver, FR: FeeRule>(
-        mut self,
+        self,
         transparent_signing_set: &TransparentSigningSet,
         sapling_extsks: &[sapling::zip32::ExtendedSpendingKey],
         orchard_saks: &[orchard::keys::SpendAuthorizingKey],
@@ -1188,9 +1188,6 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         output_prover: &OP,
         fee_rule: &FR,
     ) -> Result<BuildResult, Error<FR::Error>> {
-        #[cfg(zcash_unstable = "nu6.3")]
-        self.configure_orchard_builder_for_version(self.tx_version);
-
         match &self.build_config {
             BuildConfig::Coinbase { miner_data } => {
                 let target_height = self.target_height;
@@ -1259,7 +1256,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         OP: OutputProver,
         FR: FutureFeeRule,
     >(
-        mut self,
+        self,
         transparent_signing_set: &TransparentSigningSet,
         sapling_extsks: &[sapling::zip32::ExtendedSpendingKey],
         orchard_saks: &[orchard::keys::SpendAuthorizingKey],
@@ -1268,9 +1265,6 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         output_prover: &OP,
         fee_rule: &FR,
     ) -> Result<BuildResult, Error<FR::Error>> {
-        #[cfg(zcash_unstable = "nu6.3")]
-        self.configure_orchard_builder_for_version(self.tx_version);
-
         match &self.build_config {
             BuildConfig::Coinbase { miner_data } => {
                 let target_height = self.target_height;
@@ -1619,8 +1613,6 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
         self.check_coinbase_expiry_height::<FR::Error>()?;
         #[cfg(zcash_unstable = "nu6.3")]
         debug_assert!(!self.ironwood_in_use() || pczt_tx_version.has_ironwood());
-        #[cfg(zcash_unstable = "nu6.3")]
-        self.configure_orchard_builder_for_version(pczt_tx_version);
 
         let fee = self.get_fee(fee_rule).map_err(Error::Fee)?;
 
@@ -1929,7 +1921,7 @@ mod tests {
 
     #[test]
     #[cfg(all(feature = "circuits", zcash_unstable = "nu6.3"))]
-    fn nu6_3_standard_builder_uses_v6_orchard_protocol() {
+    fn nu6_3_standard_builder_uses_branch_orchard_protocol() {
         let builder = Builder::new(
             nu6_3_test_network(),
             zcash_protocol::consensus::BlockHeight::from_u32(10),
@@ -2314,6 +2306,66 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(
+        feature = "circuits",
+        feature = "transparent-inputs",
+        zcash_unstable = "nu6.3"
+    ))]
+    fn default_nu6_3_build_rejects_deferred_cross_address_orchard_output() {
+        use ::transparent::keys::NonHardenedChildIndex;
+
+        let recipient = orchard::keys::FullViewingKey::from(
+            &orchard::keys::SpendingKey::from_bytes([0; 32]).unwrap(),
+        )
+        .address_at(0u32, orchard::keys::Scope::External);
+        let mut builder = Builder::new(
+            nu6_3_test_network(),
+            10u32.into(),
+            BuildConfig::Standard {
+                sapling_anchor: None,
+                orchard_anchor: Some(orchard::Anchor::empty_tree()),
+                ironwood_anchor: None,
+            },
+        );
+
+        let mut transparent_signing_set = TransparentSigningSet::new();
+        let tsk = AccountPrivKey::from_seed(&TEST_NETWORK, &[0u8; 32], AccountId::ZERO).unwrap();
+        let sk = tsk
+            .derive_external_secret_key(NonHardenedChildIndex::ZERO)
+            .unwrap();
+        let pubkey = transparent_signing_set.add_key(sk);
+        let prev_coin = TxOut::new(
+            Zatoshis::const_from_u64(25000),
+            tsk.to_account_pubkey()
+                .derive_external_ivk()
+                .unwrap()
+                .derive_address(NonHardenedChildIndex::ZERO)
+                .unwrap()
+                .script()
+                .into(),
+        );
+
+        builder
+            .add_transparent_p2pkh_input(pubkey, OutPoint::fake(), prev_coin)
+            .unwrap();
+        builder
+            .add_orchard_output::<Infallible>(
+                None,
+                recipient,
+                Zatoshis::const_from_u64(10_000),
+                MemoBytes::empty(),
+            )
+            .unwrap();
+
+        assert_matches!(
+            builder.mock_build(&transparent_signing_set, &[], &[], OsRng),
+            Err(Error::OrchardBuild(
+                orchard::builder::BuildError::CrossAddressDisabled
+            ))
+        );
+    }
+
+    #[test]
     fn build_for_pczt_uses_overridden_expiry_height() {
         let tx_height = TEST_NETWORK
             .activation_height(NetworkUpgrade::Sapling)
@@ -2635,7 +2687,7 @@ mod tests {
         feature = "transparent-inputs",
         zcash_unstable = "nu6.3"
     ))]
-    fn build_for_pczt_uses_v5_for_default_nu6_3_without_ironwood() {
+    fn build_for_pczt_uses_v5_for_default_nu6_3_with_orchard_output() {
         use ::transparent::keys::NonHardenedChildIndex;
 
         let mut builder = Builder::new(
@@ -2643,7 +2695,7 @@ mod tests {
             10u32.into(),
             BuildConfig::Standard {
                 sapling_anchor: None,
-                orchard_anchor: None,
+                orchard_anchor: Some(orchard::Anchor::empty_tree()),
                 ironwood_anchor: None,
             },
         );
@@ -2668,19 +2720,20 @@ mod tests {
         builder
             .add_transparent_p2pkh_input(pubkey, OutPoint::fake(), prev_coin)
             .unwrap();
+        let recipient = orchard::keys::FullViewingKey::from(
+            &orchard::keys::SpendingKey::from_bytes([0; 32]).unwrap(),
+        )
+        .address_at(0u32, orchard::keys::Scope::External);
         builder
-            .add_transparent_output(
-                &TransparentAddress::PublicKeyHash([0; 20]),
-                Zatoshis::const_from_u64(40000),
+            .add_orchard_output::<Infallible>(
+                None,
+                recipient,
+                Zatoshis::const_from_u64(50000),
+                MemoBytes::empty(),
             )
             .unwrap();
 
-        let res = builder
-            .build_for_pczt(
-                OsRng,
-                &crate::transaction::fees::zip317::FeeRule::standard(),
-            )
-            .unwrap();
+        let res = builder.build_for_pczt(OsRng, &ZeroFeeRule).unwrap();
         assert_eq!(res.pczt_parts.version, TxVersion::V5);
         assert_eq!(
             res.pczt_parts.consensus_branch_id,
