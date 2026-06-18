@@ -301,7 +301,11 @@ fn orchard_action_count(
     is_coinbase: bool,
 ) -> Result<usize, orchard::BundleActionCountError> {
     let num_spends = builder.spends().len();
-    let num_outputs = builder.outputs().len();
+    let num_outputs = builder
+        .outputs()
+        .len()
+        .checked_add(builder.changes().len())
+        .ok_or(orchard::BundleActionCountError::InputCountOverflow)?;
 
     if is_coinbase {
         if num_spends > 0 {
@@ -1528,6 +1532,32 @@ mod tests {
         );
 
         assert!(builder.orchard_builder.is_none());
+    }
+
+    #[test]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu6.3"))]
+    fn orchard_action_count_includes_change_outputs() {
+        let fvk = orchard::keys::FullViewingKey::from(
+            &orchard::keys::SpendingKey::from_bytes([0; 32]).unwrap(),
+        );
+        let recipient = fvk.address_at(0u32, orchard::keys::Scope::Internal);
+        let mut builder = orchard::builder::Builder::new(
+            orchard::BundleKind::Transaction,
+            orchard::BundleProtocol::OrchardPostNu6_3,
+            orchard::Anchor::empty_tree(),
+        );
+
+        builder
+            .add_change_output(
+                fvk,
+                None,
+                recipient,
+                orchard::value::NoteValue::from_raw(5_000),
+                [0u8; 512],
+            )
+            .unwrap();
+
+        assert_eq!(super::orchard_action_count(&builder, false).unwrap(), 2);
     }
 
     // This test only works with the transparent_inputs feature because we have to
