@@ -330,7 +330,8 @@ fn orchard_protocol_for_branch(consensus_branch_id: BranchId) -> orchard::Bundle
         BranchId::Nu6_3 => orchard::BundleProtocol::OrchardPostNu6_3,
         #[cfg(zcash_unstable = "nu7")]
         BranchId::Nu7 => orchard::BundleProtocol::OrchardPostNu6_3,
-        _ => orchard::BundleProtocol::OrchardPreNu6_3,
+        BranchId::Nu6_2 => orchard::BundleProtocol::OrchardPreNu6_3,
+        _ => orchard::BundleProtocol::OrchardPreNu6_2,
     }
 }
 
@@ -1498,6 +1499,26 @@ mod tests {
             #[cfg(zcash_unstable = "zfuture")]
             z_future: None,
         }
+    }
+
+    #[test]
+    #[cfg(feature = "circuits")]
+    fn nu6_2_standard_builder_uses_pre_nu6_3_orchard_protocol() {
+        let builder = Builder::new(
+            zcash_protocol::consensus::TEST_NETWORK,
+            zcash_protocol::consensus::TEST_NETWORK
+                .activation_height(NetworkUpgrade::Nu6_2)
+                .unwrap(),
+            BuildConfig::Standard {
+                sapling_anchor: None,
+                orchard_anchor: Some(orchard::Anchor::empty_tree()),
+            },
+        );
+
+        assert_eq!(
+            builder.orchard_builder.as_ref().map(|b| b.protocol()),
+            Some(orchard::BundleProtocol::OrchardPreNu6_3)
+        );
     }
 
     #[test]
