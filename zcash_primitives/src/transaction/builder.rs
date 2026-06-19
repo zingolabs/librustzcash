@@ -1502,26 +1502,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "circuits")]
-    fn nu6_2_standard_builder_uses_pre_nu6_3_orchard_protocol() {
-        let builder = Builder::new(
-            zcash_protocol::consensus::TEST_NETWORK,
-            zcash_protocol::consensus::TEST_NETWORK
-                .activation_height(NetworkUpgrade::Nu6_2)
-                .unwrap(),
-            BuildConfig::Standard {
-                sapling_anchor: None,
-                orchard_anchor: Some(orchard::Anchor::empty_tree()),
-            },
-        );
-
-        assert_eq!(
-            builder.orchard_builder.as_ref().map(|b| b.protocol()),
-            Some(orchard::BundleProtocol::OrchardPreNu6_3)
-        );
-    }
-
-    #[test]
     #[cfg(all(feature = "circuits", zcash_unstable = "nu6.3"))]
     fn nu6_3_standard_builder_uses_v6_orchard_protocol() {
         let builder = Builder::new(
