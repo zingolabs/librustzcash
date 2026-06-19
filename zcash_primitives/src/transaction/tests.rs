@@ -758,10 +758,7 @@ fn check_roundtrip(tx: Transaction) -> Result<(), TestCaseError> {
         tx.ironwood_bundle.as_ref().map(|v| *v.value_balance()),
         txo.ironwood_bundle.as_ref().map(|v| *v.value_balance())
     );
-    #[cfg(all(
-        any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
-        feature = "zip-233"
-    ))]
+    #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
     if tx.version.has_zip233() {
         prop_assert_eq!(tx.zip233_amount, txo.zip233_amount);
     }
@@ -986,10 +983,7 @@ fn zip_0244() {
             txdata.consensus_branch_id(),
             txdata.lock_time(),
             txdata.expiry_height(),
-            #[cfg(all(
-                any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
-                feature = "zip-233"
-            ))]
+            #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
             txdata.zip233_amount,
             test_bundle,
             txdata.sprout_bundle().cloned(),

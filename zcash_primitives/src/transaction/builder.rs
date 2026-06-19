@@ -1782,10 +1782,7 @@ mod tests {
 
         // Fail if there is only a burn
         // 0.0005 burned, 0.0001 t-ZEC fee
-        #[cfg(all(
-            any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
-            feature = "zip-233"
-        ))]
+        #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
         {
             let build_config = BuildConfig::Standard {
                 sapling_anchor: Some(sapling::Anchor::empty_tree()),
@@ -1847,10 +1844,7 @@ mod tests {
 
         // Fail if there is insufficient input
         // 0.0003 z-ZEC out, 0.00005 t-ZEC out, 0.0001 burned, 0.00015 t-ZEC fee, 0.00059999 z-ZEC in
-        #[cfg(all(
-            any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
-            feature = "zip-233"
-        ))]
+        #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
         {
             let build_config = BuildConfig::Standard {
                 sapling_anchor: Some(witness1.root().into()),
@@ -1943,10 +1937,7 @@ mod tests {
 
         // Succeeds if there is sufficient input
         // 0.0003 z-ZEC out, 0.00005 t-ZEC out, 0.0001 burned, 0.00015 t-ZEC fee, 0.0006 z-ZEC in
-        #[cfg(all(
-            any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
-            feature = "zip-233"
-        ))]
+        #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
         {
             let build_config = BuildConfig::Standard {
                 sapling_anchor: Some(witness1.root().into()),
