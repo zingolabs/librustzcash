@@ -550,7 +550,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         // Determine the default transaction version for the consensus branch
         let tx_version = TxVersion::suggested_for_branch(consensus_branch_id);
 
-        let builder = Builder {
+        Builder {
             params,
             tx_version,
             consensus_branch_id,
@@ -570,9 +570,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
             #[cfg(not(zcash_unstable = "zfuture"))]
             tze_builder: core::marker::PhantomData,
             _progress_notifier: (),
-        };
-
-        builder
+        }
     }
 
     /// Sets the notifier channel, where progress of building the transaction is sent.
