@@ -273,18 +273,17 @@ impl BuildConfig {
         }
     }
 
-    /// Returns the legacy Orchard builder for this configuration.
-    fn legacy_orchard_builder(&self) -> Option<orchard::builder::Builder> {
+    /// Returns the Orchard builder for this configuration.
+    fn orchard_builder(
+        &self,
+        protocol: orchard::BundleProtocol,
+    ) -> Option<orchard::builder::Builder> {
         match self {
             BuildConfig::Standard { orchard_anchor, .. } => orchard_anchor.as_ref().map(|a| {
-                orchard::builder::Builder::new(
-                    orchard::BundleKind::Transaction,
-                    orchard::BundleProtocol::OrchardPreNu6_3,
-                    *a,
-                )
+                orchard::builder::Builder::new(orchard::BundleKind::Transaction, protocol, *a)
             }),
             BuildConfig::Coinbase { .. } => Some(orchard::builder::Builder::new_coinbase(
-                orchard::BundleProtocol::OrchardPreNu6_3,
+                protocol,
                 orchard::Anchor::empty_tree(),
             )),
         }
@@ -317,6 +316,16 @@ fn orchard_action_count(
         builder
             .protocol()
             .transactional_action_count(num_spends, num_outputs)
+    }
+}
+
+fn orchard_protocol_for_branch(consensus_branch_id: BranchId) -> orchard::BundleProtocol {
+    match consensus_branch_id {
+        #[cfg(zcash_unstable = "nu6.3")]
+        BranchId::Nu6_3 => orchard::BundleProtocol::OrchardPostNu6_3,
+        #[cfg(zcash_unstable = "nu7")]
+        BranchId::Nu7 => orchard::BundleProtocol::OrchardPostNu6_3,
+        _ => orchard::BundleProtocol::OrchardPreNu6_3,
     }
 }
 
@@ -484,23 +493,8 @@ impl<P, U> Builder<'_, P, U> {
     /// added after this call.
     pub fn propose_version<FE>(&mut self, version: TxVersion) -> Result<(), Error<FE>> {
         self.check_version_compatibility(version)?;
-        #[cfg(zcash_unstable = "nu6.3")]
-        self.configure_orchard_builder_for_version(version);
         self.tx_version = version;
         Ok(())
-    }
-
-    #[cfg(zcash_unstable = "nu6.3")]
-    fn configure_orchard_builder_for_version(&mut self, version: TxVersion) {
-        let protocol = if matches!(version, TxVersion::V6) {
-            orchard::BundleProtocol::OrchardPostNu6_3
-        } else {
-            orchard::BundleProtocol::OrchardPreNu6_3
-        };
-
-        if let Some(builder) = &mut self.orchard_builder {
-            builder.set_protocol(protocol);
-        }
     }
 }
 
@@ -515,6 +509,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     pub fn new(params: P, target_height: BlockHeight, build_config: BuildConfig) -> Self {
         let consensus_branch_id = BranchId::for_height(&params, target_height);
         let tx_version = TxVersion::suggested_for_branch(consensus_branch_id);
+        let orchard_protocol = orchard_protocol_for_branch(consensus_branch_id);
         #[cfg(zcash_unstable = "nu6.3")]
         let orchard_builder_available =
             !(build_config.is_coinbase() && matches!(consensus_branch_id, BranchId::Nu6_3));
@@ -524,7 +519,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         let orchard_builder = if orchard_builder_available
             && params.is_nu_active(NetworkUpgrade::Nu5, target_height)
         {
-            build_config.legacy_orchard_builder()
+            build_config.orchard_builder(orchard_protocol)
         } else {
             None
         };
@@ -576,14 +571,6 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
             _progress_notifier: (),
         };
 
-        #[cfg(zcash_unstable = "nu6.3")]
-        {
-            let mut builder = builder;
-            builder.configure_orchard_builder_for_version(tx_version);
-            builder
-        }
-
-        #[cfg(not(zcash_unstable = "nu6.3"))]
         builder
     }
 
@@ -1523,7 +1510,7 @@ mod tests {
 
     #[test]
     #[cfg(all(feature = "circuits", zcash_unstable = "nu6.3"))]
-    fn nu6_3_standard_builder_preserves_explicit_v5_legacy_orchard_protocol() {
+    fn nu6_3_standard_builder_preserves_branch_orchard_protocol_for_explicit_v5() {
         let mut builder = Builder::new(
             Nu63TestNetwork,
             zcash_protocol::consensus::BlockHeight::from_u32(10),
@@ -1539,7 +1526,7 @@ mod tests {
 
         assert_eq!(
             builder.orchard_builder.as_ref().map(|b| b.protocol()),
-            Some(orchard::BundleProtocol::OrchardPreNu6_3)
+            Some(orchard::BundleProtocol::OrchardPostNu6_3)
         );
     }
 
