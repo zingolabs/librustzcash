@@ -87,7 +87,7 @@ rand_xorshift.workspace = true
 transparent = { workspace = true, features = ["test-dependencies"] }
 sapling = { workspace = true, features = ["test-dependencies"] }
 orchard = { workspace = true, features = ["test-dependencies"] }
-zcash_protocol = { workspace = true, features = ["test-dependencies"] }
+zcash_protocol = { workspace = true, features = ["local-consensus", "test-dependencies"] }
 zip32.workspace = true
 
 [target.'cfg(unix)'.dev-dependencies]
