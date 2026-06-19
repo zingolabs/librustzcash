@@ -487,6 +487,16 @@ impl<A: Authorization> TransactionData<A> {
 
     /// Constructs a V6 [`TransactionData`] from its constituent parts,
     /// including the Ironwood bundle.
+    ///
+    /// Both the Orchard and Ironwood bundle fields use [`orchard::Bundle`], but
+    /// they are distinct V6 transaction fields with distinct bundle protocols.
+    /// The `orchard_bundle` argument must contain a bundle constructed for
+    /// [`orchard::BundleProtocol::OrchardPostNu6_3`], while `ironwood_bundle`
+    /// must contain a bundle constructed for
+    /// [`orchard::BundleProtocol::IronwoodPostNu6_3`]. Supplying a bundle for
+    /// the wrong field is invalid and can be rejected by later serialization or
+    /// commitment construction because the bundle flags and domains are protocol
+    /// specific.
     #[cfg(zcash_unstable = "nu6.3")]
     #[allow(clippy::too_many_arguments)]
     pub fn from_parts_v6(
