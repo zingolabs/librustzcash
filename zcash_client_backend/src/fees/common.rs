@@ -312,13 +312,12 @@ where
 
     #[cfg(feature = "orchard")]
     let orchard_action_count = |change_count| {
-        orchard
-            .bundle_protocol()
-            .transactional_action_count(
-                orchard.inputs().len(),
-                orchard.outputs().len() + change_count,
-            )
-            .map_err(|e| ChangeError::BundleError(orchard_fees::action_count_error(e)))
+        orchard_fees::transactional_action_count(
+            orchard.bundle_protocol(),
+            orchard.inputs().len(),
+            orchard.outputs().len() + change_count,
+        )
+        .map_err(ChangeError::BundleError)
     };
     #[cfg(not(feature = "orchard"))]
     let orchard_action_count = |change_count: usize| -> Result<usize, ChangeError<E, NoteRefT>> {
@@ -692,10 +691,12 @@ pub(crate) fn check_for_uneconomic_inputs<NoteRefT: Clone, E>(
                 .map_err(ChangeError::BundleError)?;
 
             #[cfg(feature = "orchard")]
-            let o_action_count = orchard
-                .bundle_protocol()
-                .transactional_action_count(o_req_inputs + _o_extra, o_outputs_len + change.orchard)
-                .map_err(|e| ChangeError::BundleError(orchard_fees::action_count_error(e)))?;
+            let o_action_count = orchard_fees::transactional_action_count(
+                orchard.bundle_protocol(),
+                o_req_inputs + _o_extra,
+                o_outputs_len + change.orchard,
+            )
+            .map_err(ChangeError::BundleError)?;
             #[cfg(not(feature = "orchard"))]
             let o_action_count = 0;
 

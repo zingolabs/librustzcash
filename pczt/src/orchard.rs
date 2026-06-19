@@ -131,7 +131,6 @@ impl From<crate::common::V6ConsensusBranchError> for BundleParseError {
     }
 }
 
-#[cfg(feature = "orchard")]
 impl From<NotePlaintextVersionError> for BundleParseError {
     fn from(e: NotePlaintextVersionError) -> Self {
         BundleParseError::NotePlaintextVersion(e)
