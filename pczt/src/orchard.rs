@@ -18,7 +18,7 @@ use crate::{
 
 #[cfg(feature = "orchard")]
 pub(crate) fn legacy_bundle_protocol() -> orchard::BundleProtocol {
-    // TODO: This is a PR52 compatibility shim. The txid/sighash split needs
+    // TODO: This is a temporary compatibility shim. The txid/sighash split needs
     // qr_orchard's format-aware bundle flag API, but the later PCZT split has
     // not yet introduced explicit Orchard versus Ironwood PCZT bundle semantics.
     // Treat existing PCZT Orchard data as legacy V5 Orchard for now, then
