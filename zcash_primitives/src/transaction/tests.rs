@@ -20,9 +20,17 @@ use {
 #[cfg(all(test, zcash_unstable = "nu6.3"))]
 use crate::transaction::{
     TransactionDigest,
-    sighash_v6::v6_signature_hash,
     txid::{BlockTxCommitmentDigester, hash_sapling_spends},
 };
+
+#[cfg(all(
+    test,
+    any(
+        zcash_unstable = "nu6.3",
+        all(zcash_unstable = "nu7", feature = "zip-233")
+    )
+))]
+use crate::transaction::sighash_v6::v6_signature_hash;
 
 #[cfg(all(test, zcash_unstable = "nu6.3"))]
 use blake2b_simd::Params;
@@ -830,6 +838,15 @@ proptest! {
     }
 }
 
+#[cfg(all(test, zcash_unstable = "nu7"))]
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(10))]
+    #[test]
+    fn tx_serialization_roundtrip_nu7(tx in arb_tx(BranchId::Nu7)) {
+        check_roundtrip(tx)?;
+    }
+}
+
 #[cfg(zcash_unstable = "zfuture")]
 proptest! {
     #[test]
@@ -925,6 +942,80 @@ impl Authorization for TestUnauthorized {
 
     #[cfg(zcash_unstable = "zfuture")]
     type TzeAuth = tze::Authorized;
+}
+
+#[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
+#[test]
+fn zip_0233() {
+    fn to_test_txdata(
+        tv: &self::data::zip_0233::TestVector,
+    ) -> (TransactionData<TestUnauthorized>, TxDigests<Blake2bHash>) {
+        let tx = Transaction::read(&tv.tx[..], BranchId::Nu7).unwrap();
+
+        assert_eq!(tx.txid.as_ref(), &tv.txid);
+        assert_eq!(tx.auth_commitment().as_ref(), &tv.auth_digest);
+
+        let txdata = tx.deref();
+
+        let input_amounts = tv
+            .amounts
+            .iter()
+            .map(|amount| Zatoshis::from_nonnegative_i64(*amount).unwrap())
+            .collect();
+        let input_scriptpubkeys = tv
+            .script_pubkeys
+            .iter()
+            .map(|s| Script(script::Code(s.to_vec())))
+            .collect();
+
+        let test_bundle = txdata
+            .transparent_bundle
+            .as_ref()
+            .map(|b| transparent::Bundle {
+                // we have to do this map/clone to make the types line up, since the
+                // Authorization::ScriptSig type is bound to transparent::Authorized, and we need
+                // it to be bound to TestTransparentAuth.
+                vin: b
+                    .vin
+                    .iter()
+                    .map(|vin| {
+                        TxIn::from_parts(
+                            vin.prevout().clone(),
+                            vin.script_sig().clone(),
+                            vin.sequence(),
+                        )
+                    })
+                    .collect(),
+                vout: b.vout.clone(),
+                authorization: TestTransparentAuth {
+                    input_amounts,
+                    input_scriptpubkeys,
+                },
+            });
+
+        let tdata = TransactionData::from_parts(
+            txdata.version(),
+            txdata.consensus_branch_id(),
+            txdata.lock_time(),
+            txdata.expiry_height(),
+            txdata.zip233_amount,
+            test_bundle,
+            txdata.sprout_bundle().cloned(),
+            txdata.sapling_bundle().cloned(),
+            txdata.orchard_bundle().cloned(),
+        );
+
+        (tdata, txdata.digest(TxIdDigester))
+    }
+
+    for tv in self::data::zip_0233::TEST_VECTORS {
+        let (txdata, txid_parts) = to_test_txdata(tv);
+
+        assert_eq!(
+            v6_signature_hash(&txdata, &SignableInput::Shielded, &txid_parts).as_ref(),
+            tv.sighash_shielded
+        );
+    }
 }
 
 #[test]

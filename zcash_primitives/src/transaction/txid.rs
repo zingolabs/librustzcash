@@ -107,6 +107,11 @@ fn orchard_commitment_domain(version: TxVersion) -> BundleCommitmentDomain {
         return BundleCommitmentDomain::ORCHARD_V6;
     }
 
+    #[cfg(all(zcash_unstable = "nu7", not(zcash_unstable = "nu6.3")))]
+    if matches!(version, TxVersion::V6) {
+        return BundleCommitmentDomain::ORCHARD_V5_NU6_3;
+    }
+
     #[cfg(zcash_unstable = "zfuture")]
     if matches!(version, TxVersion::ZFuture) {
         return BundleCommitmentDomain::ORCHARD_V5_NU6_3;

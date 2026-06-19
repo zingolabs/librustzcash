@@ -5,7 +5,11 @@ pub mod fees;
 pub mod sighash;
 pub mod sighash_v4;
 pub mod sighash_v5;
-#[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "zfuture"))]
+#[cfg(any(
+    zcash_unstable = "nu6.3",
+    zcash_unstable = "nu7",
+    zcash_unstable = "zfuture"
+))]
 pub mod sighash_v6;
 
 pub mod txid;
@@ -45,7 +49,7 @@ use zcash_protocol::constants::{
     V5_VERSION_GROUP_ID,
 };
 
-#[cfg(zcash_unstable = "nu6.3")]
+#[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "nu7"))]
 use zcash_protocol::constants::{V6_TX_VERSION, V6_VERSION_GROUP_ID};
 
 #[cfg(zcash_unstable = "zfuture")]
@@ -82,7 +86,7 @@ pub enum TxVersion {
     /// and [ZIP 225](https://zips.z.cash/zip-0225).
     V5,
     /// Transaction version 6, specified in [ZIP 230](https://zips.z.cash/zip-0230).
-    #[cfg(zcash_unstable = "nu6.3")]
+    #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "nu7"))]
     V6,
     /// This version is used exclusively for in-development transaction
     /// serialization, and will never be active under the consensus rules.
@@ -104,7 +108,7 @@ impl TxVersion {
                 (V3_TX_VERSION, V3_VERSION_GROUP_ID) => Ok(TxVersion::V3),
                 (V4_TX_VERSION, V4_VERSION_GROUP_ID) => Ok(TxVersion::V4),
                 (V5_TX_VERSION, V5_VERSION_GROUP_ID) => Ok(TxVersion::V5),
-                #[cfg(zcash_unstable = "nu6.3")]
+                #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "nu7"))]
                 (V6_TX_VERSION, V6_VERSION_GROUP_ID) => Ok(TxVersion::V6),
                 #[cfg(zcash_unstable = "zfuture")]
                 (ZFUTURE_TX_VERSION, ZFUTURE_VERSION_GROUP_ID) => Ok(TxVersion::ZFuture),
@@ -136,7 +140,7 @@ impl TxVersion {
                 TxVersion::V3 => V3_TX_VERSION,
                 TxVersion::V4 => V4_TX_VERSION,
                 TxVersion::V5 => V5_TX_VERSION,
-                #[cfg(zcash_unstable = "nu6.3")]
+                #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "nu7"))]
                 TxVersion::V6 => V6_TX_VERSION,
                 #[cfg(zcash_unstable = "zfuture")]
                 TxVersion::ZFuture => ZFUTURE_TX_VERSION,
@@ -149,7 +153,7 @@ impl TxVersion {
             TxVersion::V3 => V3_VERSION_GROUP_ID,
             TxVersion::V4 => V4_VERSION_GROUP_ID,
             TxVersion::V5 => V5_VERSION_GROUP_ID,
-            #[cfg(zcash_unstable = "nu6.3")]
+            #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "nu7"))]
             TxVersion::V6 => V6_VERSION_GROUP_ID,
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => ZFUTURE_VERSION_GROUP_ID,
@@ -170,7 +174,7 @@ impl TxVersion {
             TxVersion::Sprout(v) => *v >= 2u32,
             TxVersion::V3 | TxVersion::V4 => true,
             TxVersion::V5 => false,
-            #[cfg(zcash_unstable = "nu6.3")]
+            #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "nu7"))]
             TxVersion::V6 => false,
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => false,
@@ -187,7 +191,7 @@ impl TxVersion {
             TxVersion::Sprout(_) | TxVersion::V3 => false,
             TxVersion::V4 => true,
             TxVersion::V5 => true,
-            #[cfg(zcash_unstable = "nu6.3")]
+            #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "nu7"))]
             TxVersion::V6 => true,
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => true,
@@ -199,7 +203,7 @@ impl TxVersion {
         match self {
             TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 => false,
             TxVersion::V5 => true,
-            #[cfg(zcash_unstable = "nu6.3")]
+            #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "nu7"))]
             TxVersion::V6 => true,
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => true,
@@ -219,7 +223,7 @@ impl TxVersion {
     pub fn has_zip233(&self) -> bool {
         match self {
             TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 | TxVersion::V5 => false,
-            #[cfg(zcash_unstable = "nu6.3")]
+            #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "nu7"))]
             TxVersion::V6 => true,
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => true,
@@ -245,6 +249,8 @@ impl TxVersion {
             BranchId::Nu6_2 => TxVersion::V5,
             #[cfg(zcash_unstable = "nu6.3")]
             BranchId::Nu6_3 => TxVersion::V6,
+            #[cfg(zcash_unstable = "nu7")]
+            BranchId::Nu7 => TxVersion::V6,
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture => TxVersion::ZFuture,
         }
@@ -264,6 +270,8 @@ impl TxVersion {
                 Sapling | Blossom | Heartwood | Canopy | Nu5 | Nu6 | Nu6_1 | Nu6_2 => true,
                 #[cfg(zcash_unstable = "nu6.3")]
                 Nu6_3 => false, // ZIP 2003
+                #[cfg(zcash_unstable = "nu7")]
+                Nu7 => false, // ZIP 2003
                 #[cfg(zcash_unstable = "zfuture")]
                 ZFuture => false, // ZIP 2003
             },
@@ -272,14 +280,21 @@ impl TxVersion {
                 Nu5 | Nu6 | Nu6_1 | Nu6_2 => true,
                 #[cfg(zcash_unstable = "nu6.3")]
                 Nu6_3 => true,
+                #[cfg(zcash_unstable = "nu7")]
+                Nu7 => true,
                 #[cfg(zcash_unstable = "zfuture")]
                 ZFuture => true,
             },
-            #[cfg(zcash_unstable = "nu6.3")]
+            #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "nu7"))]
             TxVersion::V6 => match consensus_branch_id {
                 Sprout | Overwinter | Sapling | Blossom | Heartwood | Canopy | Nu5 | Nu6
                 | Nu6_1 | Nu6_2 => false,
+                #[cfg(zcash_unstable = "nu6.3")]
                 Nu6_3 => true, // Ironwood / NU6.3
+                #[cfg(zcash_unstable = "nu7")]
+                Nu7 => true, // ZIP 230 or ZIP 248, whichever is chosen for activation
+                #[cfg(zcash_unstable = "zfuture")]
+                ZFuture => false,
             },
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => match consensus_branch_id {
@@ -287,6 +302,8 @@ impl TxVersion {
                 | Nu6_1 | Nu6_2 => false,
                 #[cfg(zcash_unstable = "nu6.3")]
                 Nu6_3 => false,
+                #[cfg(zcash_unstable = "nu7")]
+                Nu7 => false,
                 ZFuture => true,
             },
         }
@@ -833,7 +850,11 @@ impl TransactionData<Authorized> {
     }
 }
 
-#[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "zfuture"))]
+#[cfg(any(
+    zcash_unstable = "nu6.3",
+    zcash_unstable = "nu7",
+    zcash_unstable = "zfuture"
+))]
 struct V6HeaderFragment {
     consensus_branch_id: BranchId,
     lock_time: u32,
@@ -850,7 +871,7 @@ impl Transaction {
         match data.version {
             TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 => Self::from_data_v4(data),
             TxVersion::V5 => Ok(Self::from_data_v5(data)),
-            #[cfg(zcash_unstable = "nu6.3")]
+            #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "nu7"))]
             TxVersion::V6 => Ok(Self::from_data_v6(data)),
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => Ok(Self::from_data_v6(data)),
@@ -878,7 +899,11 @@ impl Transaction {
         Transaction { txid, data }
     }
 
-    #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "zfuture"))]
+    #[cfg(any(
+        zcash_unstable = "nu6.3",
+        zcash_unstable = "nu7",
+        zcash_unstable = "zfuture"
+    ))]
     fn from_data_v6(data: TransactionData<Authorized>) -> Self {
         let txid = to_txid(
             data.version,
@@ -906,7 +931,7 @@ impl Transaction {
                 Self::read_v4(reader, version, consensus_branch_id)
             }
             TxVersion::V5 => Self::read_v5(reader.into_base_reader(), version),
-            #[cfg(zcash_unstable = "nu6.3")]
+            #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "nu7"))]
             TxVersion::V6 => Self::read_v6(reader.into_base_reader(), version),
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => Self::read_v6(reader.into_base_reader(), version),
@@ -1047,6 +1072,8 @@ impl Transaction {
                 BranchId::Nu6_2 => ProofSizeEnforcement::Strict,
                 #[cfg(zcash_unstable = "nu6.3")]
                 BranchId::Nu6_3 => ProofSizeEnforcement::Strict,
+                #[cfg(zcash_unstable = "nu7")]
+                BranchId::Nu7 => ProofSizeEnforcement::Strict,
                 #[cfg(zcash_unstable = "zfuture")]
                 BranchId::ZFuture => ProofSizeEnforcement::Strict,
             },
@@ -1075,7 +1102,11 @@ impl Transaction {
         Ok(Self::from_data_v5(data))
     }
 
-    #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "zfuture"))]
+    #[cfg(any(
+        zcash_unstable = "nu6.3",
+        zcash_unstable = "nu7",
+        zcash_unstable = "zfuture"
+    ))]
     fn read_v6<R: Read>(mut reader: R, version: TxVersion) -> io::Result<Self> {
         let header_fragment = Self::read_v6_header_fragment(&mut reader)?;
 
@@ -1136,7 +1167,11 @@ impl Transaction {
         Ok((consensus_branch_id, lock_time, expiry_height))
     }
 
-    #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "zfuture"))]
+    #[cfg(any(
+        zcash_unstable = "nu6.3",
+        zcash_unstable = "nu7",
+        zcash_unstable = "zfuture"
+    ))]
     fn read_v6_header_fragment<R: Read>(mut reader: R) -> io::Result<V6HeaderFragment> {
         let (consensus_branch_id, lock_time, expiry_height) =
             Self::read_header_fragment(&mut reader)?;
@@ -1164,13 +1199,6 @@ impl Transaction {
         any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
         feature = "zip-233"
     ))]
-    #[cfg_attr(
-        all(
-            zcash_unstable = "nu7",
-            not(any(zcash_unstable = "nu6.3", zcash_unstable = "zfuture"))
-        ),
-        allow(dead_code)
-    )]
     fn read_zip233_amount<R: Read>(mut reader: R) -> io::Result<Zatoshis> {
         Zatoshis::from_u64(reader.read_u64_le()?)
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "zip233Amount out of range"))
@@ -1195,7 +1223,7 @@ impl Transaction {
         match self.version {
             TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 => self.write_v4(writer),
             TxVersion::V5 => self.write_v5(writer),
-            #[cfg(zcash_unstable = "nu6.3")]
+            #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "nu7"))]
             TxVersion::V6 => self.write_v6(writer),
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => self.write_v6(writer),
@@ -1270,7 +1298,11 @@ impl Transaction {
         Ok(())
     }
 
-    #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "zfuture"))]
+    #[cfg(any(
+        zcash_unstable = "nu6.3",
+        zcash_unstable = "nu7",
+        zcash_unstable = "zfuture"
+    ))]
     pub fn write_v6<W: Write>(&self, mut writer: W) -> io::Result<()> {
         if self.sprout_bundle.is_some() {
             return Err(io::Error::new(
@@ -1299,7 +1331,11 @@ impl Transaction {
         Ok(())
     }
 
-    #[cfg(any(zcash_unstable = "nu6.3", zcash_unstable = "zfuture"))]
+    #[cfg(any(
+        zcash_unstable = "nu6.3",
+        zcash_unstable = "nu7",
+        zcash_unstable = "zfuture"
+    ))]
     pub fn write_v6_header<W: Write>(&self, mut writer: W) -> io::Result<()> {
         self.version.write(&mut writer)?;
         writer.write_u32_le(u32::from(self.consensus_branch_id))?;
@@ -1494,6 +1530,8 @@ pub mod testing {
             BranchId::Nu6_2 => Just(TxVersion::V5).boxed(),
             #[cfg(zcash_unstable = "nu6.3")]
             BranchId::Nu6_3 => Just(TxVersion::V6).boxed(),
+            #[cfg(zcash_unstable = "nu7")]
+            BranchId::Nu7 => Just(TxVersion::V6).boxed(),
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture => Just(TxVersion::ZFuture).boxed(),
         }
@@ -1507,6 +1545,31 @@ pub mod testing {
     prop_compose! {
         pub fn arb_txdata(consensus_branch_id: BranchId)(
             version in arb_tx_version(consensus_branch_id),
+        )(
+            lock_time in any::<u32>(),
+            expiry_height in any::<u32>(),
+            transparent_bundle in transparent::arb_bundle(),
+            sapling_bundle in sapling::arb_bundle_for_version(version),
+            orchard_bundle in orchard::arb_bundle_for_version(version),
+            version in Just(version),
+        ) -> TransactionData<Authorized> {
+            TransactionData {
+                version,
+                consensus_branch_id,
+                lock_time,
+                expiry_height: expiry_height.into(),
+                transparent_bundle,
+                sprout_bundle: None,
+                sapling_bundle,
+                orchard_bundle,
+            }
+        }
+    }
+
+    #[cfg(all(zcash_unstable = "nu7", not(feature = "zip-233")))]
+    prop_compose! {
+        pub fn arb_txdata(consensus_branch_id: BranchId)(
+            version in arb_tx_version(consensus_branch_id)
         )(
             lock_time in any::<u32>(),
             expiry_height in any::<u32>(),

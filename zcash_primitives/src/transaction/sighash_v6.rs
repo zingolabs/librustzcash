@@ -41,5 +41,8 @@ pub fn v6_signature_hash<
     )
 }
 
-#[cfg(all(zcash_unstable = "zfuture", not(zcash_unstable = "nu6.3")))]
+#[cfg(all(
+    any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
+    not(zcash_unstable = "nu6.3")
+))]
 pub use crate::transaction::sighash_v5::v5_signature_hash as v6_signature_hash;
