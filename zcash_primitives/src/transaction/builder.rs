@@ -282,6 +282,11 @@ impl BuildConfig {
             BuildConfig::Standard { orchard_anchor, .. } => orchard_anchor.as_ref().map(|a| {
                 orchard::builder::Builder::new(orchard::BundleKind::Transaction, protocol, *a)
             }),
+            BuildConfig::Coinbase { .. }
+                if matches!(protocol, orchard::BundleProtocol::OrchardPostNu6_3) =>
+            {
+                None
+            }
             BuildConfig::Coinbase { .. } => Some(orchard::builder::Builder::new_coinbase(
                 protocol,
                 orchard::Anchor::empty_tree(),
@@ -509,15 +514,8 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     pub fn new(params: P, target_height: BlockHeight, build_config: BuildConfig) -> Self {
         let consensus_branch_id = BranchId::for_height(&params, target_height);
         let orchard_protocol = orchard_protocol_for_branch(consensus_branch_id);
-        #[cfg(zcash_unstable = "nu6.3")]
-        let orchard_builder_available =
-            !(build_config.is_coinbase() && matches!(consensus_branch_id, BranchId::Nu6_3));
-        #[cfg(not(zcash_unstable = "nu6.3"))]
-        let orchard_builder_available = true;
 
-        let orchard_builder = if orchard_builder_available
-            && params.is_nu_active(NetworkUpgrade::Nu5, target_height)
-        {
+        let orchard_builder = if params.is_nu_active(NetworkUpgrade::Nu5, target_height) {
             build_config.orchard_builder(orchard_protocol)
         } else {
             None
@@ -1491,6 +1489,39 @@ mod tests {
         }
     }
 
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
+    #[derive(Clone, Copy)]
+    struct Nu7TestNetwork;
+
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
+    impl zcash_protocol::consensus::Parameters for Nu7TestNetwork {
+        fn network_type(&self) -> zcash_protocol::consensus::NetworkType {
+            zcash_protocol::consensus::NetworkType::Regtest
+        }
+
+        fn activation_height(
+            &self,
+            nu: zcash_protocol::consensus::NetworkUpgrade,
+        ) -> Option<zcash_protocol::consensus::BlockHeight> {
+            use zcash_protocol::consensus::{BlockHeight, NetworkUpgrade};
+
+            match nu {
+                NetworkUpgrade::Overwinter => Some(BlockHeight::from_u32(1)),
+                NetworkUpgrade::Sapling => Some(BlockHeight::from_u32(2)),
+                NetworkUpgrade::Blossom => Some(BlockHeight::from_u32(3)),
+                NetworkUpgrade::Heartwood => Some(BlockHeight::from_u32(4)),
+                NetworkUpgrade::Canopy => Some(BlockHeight::from_u32(5)),
+                NetworkUpgrade::Nu5 => Some(BlockHeight::from_u32(6)),
+                NetworkUpgrade::Nu6 => Some(BlockHeight::from_u32(7)),
+                NetworkUpgrade::Nu6_1 => Some(BlockHeight::from_u32(8)),
+                NetworkUpgrade::Nu6_2 => Some(BlockHeight::from_u32(9)),
+                NetworkUpgrade::Nu7 => Some(BlockHeight::from_u32(10)),
+                #[cfg(zcash_unstable = "zfuture")]
+                NetworkUpgrade::ZFuture => None,
+            }
+        }
+    }
+
     #[test]
     #[cfg(all(feature = "circuits", zcash_unstable = "nu6.3"))]
     fn nu6_3_standard_builder_uses_v6_orchard_protocol() {
@@ -1537,6 +1568,18 @@ mod tests {
     fn nu6_3_coinbase_builder_does_not_expose_orchard() {
         let builder = Builder::new(
             Nu63TestNetwork,
+            zcash_protocol::consensus::BlockHeight::from_u32(10),
+            BuildConfig::Coinbase { miner_data: None },
+        );
+
+        assert!(builder.orchard_builder.is_none());
+    }
+
+    #[test]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
+    fn nu7_coinbase_builder_does_not_expose_orchard() {
+        let builder = Builder::new(
+            Nu7TestNetwork,
             zcash_protocol::consensus::BlockHeight::from_u32(10),
             BuildConfig::Coinbase { miner_data: None },
         );
