@@ -79,6 +79,12 @@ fn suggested_version_for_v5_branches_is_not_v6() {
 
 #[cfg(all(test, zcash_unstable = "nu6.3"))]
 #[test]
+fn v4_transactions_remain_valid_in_nu6_3() {
+    assert!(TxVersion::V4.valid_in_branch(BranchId::Nu6_3));
+}
+
+#[cfg(all(test, zcash_unstable = "nu6.3"))]
+#[test]
 fn v5_auth_commitment_in_nu6_3_does_not_include_ironwood_digest() {
     fn empty_hash(personal: &[u8; 16]) -> Blake2bHash {
         Params::new().hash_length(32).personal(personal).hash(&[])

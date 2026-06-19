@@ -269,7 +269,7 @@ impl TxVersion {
                 Sprout | Overwinter => false,
                 Sapling | Blossom | Heartwood | Canopy | Nu5 | Nu6 | Nu6_1 | Nu6_2 => true,
                 #[cfg(zcash_unstable = "nu6.3")]
-                Nu6_3 => false, // ZIP 2003
+                Nu6_3 => true,
                 #[cfg(zcash_unstable = "nu7")]
                 Nu7 => false, // ZIP 2003
                 #[cfg(zcash_unstable = "zfuture")]
