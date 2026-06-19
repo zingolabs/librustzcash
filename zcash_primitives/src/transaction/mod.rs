@@ -838,7 +838,10 @@ struct V6HeaderFragment {
     consensus_branch_id: BranchId,
     lock_time: u32,
     expiry_height: BlockHeight,
-    #[cfg(all(zcash_unstable = "zfuture", feature = "zip-233"))]
+    #[cfg(all(
+        any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
+        feature = "zip-233"
+    ))]
     zip233_amount: Zatoshis,
 }
 
@@ -1094,7 +1097,10 @@ impl Transaction {
             consensus_branch_id: header_fragment.consensus_branch_id,
             lock_time: header_fragment.lock_time,
             expiry_height: header_fragment.expiry_height,
-            #[cfg(all(zcash_unstable = "zfuture", feature = "zip-233"))]
+            #[cfg(all(
+                any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
+                feature = "zip-233"
+            ))]
             zip233_amount: header_fragment.zip233_amount,
             transparent_bundle,
             sprout_bundle: None,
@@ -1139,7 +1145,10 @@ impl Transaction {
             consensus_branch_id,
             lock_time,
             expiry_height,
-            #[cfg(all(zcash_unstable = "zfuture", feature = "zip-233"))]
+            #[cfg(all(
+                any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
+                feature = "zip-233"
+            ))]
             zip233_amount: Self::read_zip233_amount(&mut reader)?,
         })
     }
@@ -1151,7 +1160,17 @@ impl Transaction {
         sapling_serialization::read_v5_bundle(reader)
     }
 
-    #[cfg(all(zcash_unstable = "zfuture", feature = "zip-233"))]
+    #[cfg(all(
+        any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
+        feature = "zip-233"
+    ))]
+    #[cfg_attr(
+        all(
+            zcash_unstable = "nu7",
+            not(any(zcash_unstable = "nu6.3", zcash_unstable = "zfuture"))
+        ),
+        allow(dead_code)
+    )]
     fn read_zip233_amount<R: Read>(mut reader: R) -> io::Result<Zatoshis> {
         Zatoshis::from_u64(reader.read_u64_le()?)
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "zip233Amount out of range"))
@@ -1287,7 +1306,10 @@ impl Transaction {
         writer.write_u32_le(self.lock_time)?;
         writer.write_u32_le(u32::from(self.expiry_height))?;
 
-        #[cfg(all(zcash_unstable = "zfuture", feature = "zip-233"))]
+        #[cfg(all(
+            any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
+            feature = "zip-233"
+        ))]
         writer.write_u64_le(self.zip233_amount.into())?;
         Ok(())
     }
