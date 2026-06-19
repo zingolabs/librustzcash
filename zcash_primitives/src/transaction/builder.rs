@@ -80,18 +80,6 @@ impl<FE: fmt::Display> fmt::Display for FeeError<FE> {
     }
 }
 
-fn orchard_action_count_error(err: orchard::BundleActionCountError) -> &'static str {
-    match err {
-        orchard::BundleActionCountError::InputCountOverflow => "Orchard action count overflowed.",
-        orchard::BundleActionCountError::SpendsDisabled => {
-            "Spends are disabled, so num_spends must be zero."
-        }
-        orchard::BundleActionCountError::OutputsDisabled => {
-            "Outputs are disabled, so num_outputs must be zero."
-        }
-    }
-}
-
 /// Errors that can occur during transaction construction.
 #[derive(Debug)]
 pub enum Error<FE> {
@@ -280,15 +268,16 @@ impl BuildConfig {
     ) -> Option<orchard::builder::Builder> {
         match self {
             BuildConfig::Standard { orchard_anchor, .. } => orchard_anchor.as_ref().map(|a| {
-                orchard::builder::Builder::new(orchard::BundleKind::Transaction, protocol, *a)
+                orchard::builder::Builder::new(protocol, orchard::builder::BundleType::DEFAULT, *a)
             }),
             BuildConfig::Coinbase { .. }
                 if matches!(protocol, orchard::BundleProtocol::OrchardPostNu6_3) =>
             {
                 None
             }
-            BuildConfig::Coinbase { .. } => Some(orchard::builder::Builder::new_coinbase(
+            BuildConfig::Coinbase { .. } => Some(orchard::builder::Builder::new(
                 protocol,
+                orchard::builder::BundleType::Coinbase,
                 orchard::Anchor::empty_tree(),
             )),
         }
@@ -303,25 +292,21 @@ impl BuildConfig {
 fn orchard_action_count(
     builder: &orchard::builder::Builder,
     is_coinbase: bool,
-) -> Result<usize, orchard::BundleActionCountError> {
+) -> Result<usize, &'static str> {
     let num_spends = builder.spends().len();
     let num_outputs = builder
         .outputs()
         .len()
         .checked_add(builder.changes().len())
-        .ok_or(orchard::BundleActionCountError::InputCountOverflow)?;
+        .ok_or("num_outputs + num_changes overflowed")?;
 
-    if is_coinbase {
-        if num_spends > 0 {
-            Err(orchard::BundleActionCountError::SpendsDisabled)
-        } else {
-            Ok(builder.protocol().coinbase_action_count(num_outputs))
-        }
+    let bundle_type = if is_coinbase {
+        orchard::builder::BundleType::Coinbase
     } else {
-        builder
-            .protocol()
-            .transactional_action_count(num_spends, num_outputs)
-    }
+        orchard::builder::BundleType::DEFAULT
+    };
+
+    bundle_type.num_actions(num_spends, num_outputs, builder.protocol())
 }
 
 fn orchard_protocol_for_branch(consensus_branch_id: BranchId) -> orchard::BundleProtocol {
@@ -798,7 +783,7 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
                     .map_or(Ok(0), |builder| {
                         orchard_action_count(builder, self.build_config.is_coinbase())
                     })
-                    .map_err(|e| FeeError::Bundle(orchard_action_count_error(e)))?,
+                    .map_err(FeeError::Bundle)?,
             )
             .map_err(FeeError::FeeRule)
     }
@@ -842,7 +827,7 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
                     .map_or(Ok(0), |builder| {
                         orchard_action_count(builder, self.build_config.is_coinbase())
                     })
-                    .map_err(|e| FeeError::Bundle(orchard_action_count_error(e)))?,
+                    .map_err(FeeError::Bundle)?,
                 self.tze_builder.inputs(),
                 self.tze_builder.outputs(),
             )
@@ -1572,8 +1557,8 @@ mod tests {
         );
         let recipient = fvk.address_at(0u32, orchard::keys::Scope::Internal);
         let mut builder = orchard::builder::Builder::new(
-            orchard::BundleKind::Transaction,
             orchard::BundleProtocol::OrchardPostNu6_3,
+            orchard::builder::BundleType::DEFAULT,
             orchard::Anchor::empty_tree(),
         );
 

@@ -29,7 +29,7 @@ pub(crate) fn legacy_bundle_protocol() -> orchard::BundleProtocol {
 
 #[cfg(feature = "orchard")]
 pub(crate) fn legacy_bundle_format() -> orchard::bundle::BundleFormat {
-    legacy_bundle_protocol().bundle_format()
+    orchard::bundle::BundleFormat::PreNu6_3
 }
 
 #[cfg(feature = "orchard")]

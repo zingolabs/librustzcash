@@ -869,13 +869,12 @@ where
         } else {
             0
         };
-        ::orchard::BundleProtocol::OrchardPreNu6_3
-            .transactional_action_count(spendable_notes.orchard.len(), requested_orchard_actions)
-            .map_err(|e| {
-                InputSelectorError::Change(ChangeError::BundleError(
-                    orchard_fees::action_count_error(e),
-                ))
-            })?
+        orchard_fees::transactional_action_count(
+            ::orchard::BundleProtocol::OrchardPreNu6_3,
+            spendable_notes.orchard.len(),
+            requested_orchard_actions,
+        )
+        .map_err(|e| InputSelectorError::Change(ChangeError::BundleError(e)))?
     };
     #[cfg(not(feature = "orchard"))]
     let orchard_action_count: usize = 0;
@@ -1267,11 +1266,12 @@ impl<DbT: InputSource> ShieldingSelector for GreedyInputSelector<DbT> {
             }
             #[cfg(feature = "orchard")]
             PoolType::ORCHARD => {
-                let count = ::orchard::BundleProtocol::OrchardPreNu6_3
-                    .transactional_action_count(0, 1)
-                    .expect(
-                        "legacy Orchard protocol permits any transactional spend and output count",
-                    );
+                let count = orchard_fees::transactional_action_count(
+                    ::orchard::BundleProtocol::OrchardPreNu6_3,
+                    0,
+                    1,
+                )
+                .expect("legacy Orchard protocol permits any transactional spend and output count");
                 (0usize, count)
             }
             // Unreachable: `resolve_shielded_destination` rejects transparent

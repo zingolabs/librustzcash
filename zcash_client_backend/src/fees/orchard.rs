@@ -3,11 +3,15 @@
 
 use std::convert::Infallible;
 
-use orchard::BundleProtocol;
+use orchard::{BundleProtocol, builder::BundleType};
 use zcash_protocol::value::Zatoshis;
 
-pub(crate) fn action_count_error(err: orchard::BundleActionCountError) -> &'static str {
-    err.as_static_str()
+pub(crate) fn transactional_action_count(
+    protocol: BundleProtocol,
+    num_spends: usize,
+    num_outputs: usize,
+) -> Result<usize, &'static str> {
+    BundleType::DEFAULT.num_actions(num_spends, num_outputs, protocol)
 }
 
 /// A trait that provides a minimized view of Orchard-style bundle configuration
