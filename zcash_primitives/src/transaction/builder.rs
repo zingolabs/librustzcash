@@ -507,23 +507,6 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     /// The expiry height will be set to the given height plus the default transaction
     /// expiry delta (20 blocks).
     pub fn new(params: P, target_height: BlockHeight, build_config: BuildConfig) -> Self {
-        let consensus_branch_id = BranchId::for_height(&params, target_height);
-        let tx_version = TxVersion::suggested_for_branch(consensus_branch_id);
-        let orchard_protocol = orchard_protocol_for_branch(consensus_branch_id);
-        #[cfg(zcash_unstable = "nu6.3")]
-        let orchard_builder_available =
-            !(build_config.is_coinbase() && matches!(consensus_branch_id, BranchId::Nu6_3));
-        #[cfg(not(zcash_unstable = "nu6.3"))]
-        let orchard_builder_available = true;
-
-        let orchard_builder = if orchard_builder_available
-            && params.is_nu_active(NetworkUpgrade::Nu5, target_height)
-        {
-            build_config.orchard_builder(orchard_protocol)
-        } else {
-            None
-        };
-
         let sapling_builder = build_config
             .sapling_builder_config()
             .map(|(bundle_type, anchor)| {
@@ -547,6 +530,24 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
             target_height
         } else {
             target_height + DEFAULT_TX_EXPIRY_DELTA
+        };
+
+        // Determine the default transaction version for the consensus branch
+        let consensus_branch_id = BranchId::for_height(&params, target_height);
+        let tx_version = TxVersion::suggested_for_branch(consensus_branch_id);
+        let orchard_protocol = orchard_protocol_for_branch(consensus_branch_id);
+        #[cfg(zcash_unstable = "nu6.3")]
+        let orchard_builder_available =
+            !(build_config.is_coinbase() && matches!(consensus_branch_id, BranchId::Nu6_3));
+        #[cfg(not(zcash_unstable = "nu6.3"))]
+        let orchard_builder_available = true;
+
+        let orchard_builder = if orchard_builder_available
+            && params.is_nu_active(NetworkUpgrade::Nu5, target_height)
+        {
+            build_config.orchard_builder(orchard_protocol)
+        } else {
+            None
         };
 
         let builder = Builder {
