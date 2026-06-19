@@ -1066,13 +1066,7 @@ fn ironwood_to_ironwood() {
             orchard::Anchor::empty_tree(),
         );
         orchard_builder
-            .add_output_with_version(
-                None,
-                recipient,
-                value,
-                Memo::Empty.encode().into_bytes(),
-                orchard::note::NoteVersion::V3,
-            )
+            .add_output(None, recipient, value, Memo::Empty.encode().into_bytes())
             .unwrap();
         let (bundle, meta) = orchard_builder.build::<i64>(&mut rng).unwrap().unwrap();
         let action = bundle
