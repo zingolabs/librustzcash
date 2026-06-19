@@ -2819,6 +2819,9 @@ pub(crate) fn get_wallet_summary<P: consensus::Parameters>(
              value_pending_spendability,
              uneconomic_value| {
                 balances.with_ironwood_balance_mut::<_, SqliteClientError>(|bal| {
+                    #[cfg(zcash_unstable = "nu6.3")]
+                    bal.add_spendable_value(spendable_value)?;
+                    #[cfg(not(zcash_unstable = "nu6.3"))]
                     bal.add_pending_spendable_value(spendable_value)?;
                     bal.add_pending_change_value(change_pending_confirmation)?;
                     bal.add_pending_spendable_value(value_pending_spendability)?;

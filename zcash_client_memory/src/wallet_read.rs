@@ -277,6 +277,10 @@ impl<P: consensus::Parameters> WalletRead for MemoryWalletDb<P> {
                             Note::Orchard(orchard_note)
                                 if orchard_note.version() == orchard::note::NoteVersion::V3 =>
                             {
+                                #[cfg(zcash_unstable = "nu6.3")]
+                                account_balance
+                                    .with_ironwood_balance_mut(update_balance_with_note)?;
+                                #[cfg(not(zcash_unstable = "nu6.3"))]
                                 account_balance.with_ironwood_balance_mut(
                                     |b: &mut Balance| -> Result<(), Error> {
                                         if self.note_is_pending(

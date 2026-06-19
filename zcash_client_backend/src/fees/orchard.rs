@@ -1,9 +1,8 @@
 //! Types related to computation of fees and change related to the Orchard components
 //! of a transaction.
 
-use std::convert::Infallible;
-
 use orchard::{BundleProtocol, builder::BundleType};
+use std::convert::Infallible;
 use zcash_protocol::value::Zatoshis;
 
 pub(crate) fn transactional_action_count(
@@ -14,7 +13,7 @@ pub(crate) fn transactional_action_count(
     BundleType::DEFAULT.num_actions(num_spends, num_outputs, protocol)
 }
 
-/// A trait that provides a minimized view of Orchard-style bundle configuration
+/// A trait that provides a minimized view of Orchard bundle configuration
 /// suitable for use in fee and change calculation.
 pub trait BundleView<NoteRef> {
     /// The type of inputs to the bundle.
@@ -22,8 +21,6 @@ pub trait BundleView<NoteRef> {
     /// The type of inputs of the bundle.
     type Out: OutputView;
 
-    /// Returns the protocol rules for the bundle.
-    fn bundle_protocol(&self) -> BundleProtocol;
     /// Returns the inputs to the bundle.
     fn inputs(&self) -> &[Self::In];
     /// Returns the outputs of the bundle.
@@ -31,34 +28,26 @@ pub trait BundleView<NoteRef> {
 }
 
 impl<'a, NoteRef, In: InputView<NoteRef>, Out: OutputView> BundleView<NoteRef>
-    for (BundleProtocol, &'a [In], &'a [Out])
+    for (&'a [In], &'a [Out])
 {
     type In = In;
     type Out = Out;
 
-    fn bundle_protocol(&self) -> BundleProtocol {
+    fn inputs(&self) -> &[In] {
         self.0
     }
 
-    fn inputs(&self) -> &[In] {
-        self.1
-    }
-
     fn outputs(&self) -> &[Out] {
-        self.2
+        self.1
     }
 }
 
-/// A [`BundleView`] for the empty legacy Orchard bundle.
+/// A [`BundleView`] for an empty Orchard bundle.
 pub struct EmptyBundleView;
 
 impl<NoteRef> BundleView<NoteRef> for EmptyBundleView {
     type In = Infallible;
     type Out = Infallible;
-
-    fn bundle_protocol(&self) -> BundleProtocol {
-        BundleProtocol::OrchardPreNu6_3
-    }
 
     fn inputs(&self) -> &[Self::In] {
         &[]
@@ -76,6 +65,11 @@ pub trait InputView<NoteRef> {
     fn note_id(&self) -> &NoteRef;
     /// The value of the input being spent.
     fn value(&self) -> Zatoshis;
+    /// Returns whether this input is an Ironwood note.
+    #[cfg(zcash_unstable = "nu6.3")]
+    fn is_ironwood(&self) -> bool {
+        false
+    }
 }
 
 impl<N> InputView<N> for Infallible {

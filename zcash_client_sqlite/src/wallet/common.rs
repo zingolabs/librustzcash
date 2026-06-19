@@ -76,6 +76,13 @@ pub(crate) fn table_constants<E: ErrUnsupportedPool>(
 }
 
 fn spendable_note_version_clause(protocol: ShieldedProtocol) -> &'static str {
+    #[cfg(zcash_unstable = "nu6.3")]
+    {
+        let _ = protocol;
+        ""
+    }
+
+    #[cfg(not(zcash_unstable = "nu6.3"))]
     match protocol {
         ShieldedProtocol::Sapling => "",
         ShieldedProtocol::Orchard => "AND rn.note_version = 2",

@@ -433,8 +433,20 @@ impl AccountBalance {
 
     /// Returns the total value of shielded funds that may immediately be spent.
     pub fn spendable_value(&self) -> Zatoshis {
-        (self.sapling_balance.spendable_value + self.orchard_balance.spendable_value)
-            .expect("Account balance cannot overflow MAX_MONEY")
+        let spendable = (self.sapling_balance.spendable_value
+            + self.orchard_balance.spendable_value)
+            .expect("Account balance cannot overflow MAX_MONEY");
+
+        #[cfg(zcash_unstable = "nu6.3")]
+        {
+            (spendable + self.ironwood_balance.spendable_value)
+                .expect("Account balance cannot overflow MAX_MONEY")
+        }
+
+        #[cfg(not(zcash_unstable = "nu6.3"))]
+        {
+            spendable
+        }
     }
 
     /// Returns the total value of change and/or shielding transaction outputs that are awaiting
@@ -2681,6 +2693,23 @@ impl<AccountId> SentTransactionOutput<AccountId> {
         Self {
             output_index,
             note_commitment_tree: None,
+            recipient,
+            value,
+            memo,
+        }
+    }
+
+    /// Constructs a new [`SentTransactionOutput`] with explicit note commitment tree metadata.
+    pub(crate) fn from_parts_in_tree(
+        note_commitment_tree: Option<NoteCommitmentTree>,
+        output_index: usize,
+        recipient: Recipient<AccountId>,
+        value: Zatoshis,
+        memo: Option<MemoBytes>,
+    ) -> Self {
+        Self {
+            output_index,
+            note_commitment_tree,
             recipient,
             value,
             memo,
