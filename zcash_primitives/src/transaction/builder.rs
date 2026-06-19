@@ -395,6 +395,24 @@ fn orchard_protocol_for_branch(consensus_branch_id: BranchId) -> orchard::Bundle
     }
 }
 
+fn orchard_protocol_for_version(
+    consensus_branch_id: BranchId,
+    tx_version: TxVersion,
+) -> orchard::BundleProtocol {
+    match tx_version {
+        TxVersion::V5 => match consensus_branch_id {
+            #[cfg(zcash_unstable = "nu6.3")]
+            BranchId::Nu6_3 => orchard::BundleProtocol::OrchardPreNu6_3,
+            #[cfg(zcash_unstable = "nu7")]
+            BranchId::Nu7 => orchard::BundleProtocol::OrchardPreNu6_3,
+            #[cfg(zcash_unstable = "zfuture")]
+            BranchId::ZFuture => orchard::BundleProtocol::OrchardPreNu6_3,
+            _ => orchard_protocol_for_branch(consensus_branch_id),
+        },
+        _ => orchard_protocol_for_branch(consensus_branch_id),
+    }
+}
+
 /// The result of a transaction build operation, which includes the resulting transaction along
 /// with metadata describing how spends and outputs were shuffled in creating the transaction's
 /// shielded bundles.
@@ -468,8 +486,8 @@ pub struct Builder<'a, P, U> {
     tx_version: TxVersion,
     // Distinguishes an explicit `propose_version` call from the branch default
     // chosen in `Builder::new`. `build_for_pczt` needs this because NU6.3's
-    // branch default is V6, but a default PCZT that does not use Ironwood
-    // should stay V5 while an explicit V6 request must be preserved.
+    // branch default is V6, but a default PCZT that does not use a V6-only
+    // bundle should stay V5 while an explicit V6 request must be preserved.
     //
     // A clearer future representation would store version selection as an enum
     // like `Default(TxVersion)` / `Proposed(TxVersion)` instead of splitting it
@@ -564,6 +582,26 @@ impl<P, U> Builder<'_, P, U> {
         })
     }
 
+    fn orchard_in_use(&self) -> bool {
+        self.orchard_builder.as_ref().is_some_and(|b| {
+            !b.spends().is_empty() || !b.outputs().is_empty() || !b.changes().is_empty()
+        })
+    }
+
+    fn orchard_protocol_matches_version(&self, version: TxVersion) -> bool {
+        self.orchard_builder.as_ref().is_none_or(|b| {
+            b.protocol() == orchard_protocol_for_version(self.consensus_branch_id, version)
+        })
+    }
+
+    #[cfg(zcash_unstable = "nu6.3")]
+    fn orchard_post_nu6_3_in_use(&self) -> bool {
+        self.orchard_builder.as_ref().is_some_and(|b| {
+            b.protocol() == orchard::BundleProtocol::OrchardPostNu6_3
+                && (!b.spends().is_empty() || !b.outputs().is_empty() || !b.changes().is_empty())
+        })
+    }
+
     /// Checks that the given version supports all features required by the inputs and
     /// outputs already added to the builder.
     fn check_version_compatibility<FE>(&self, version: TxVersion) -> Result<(), Error<FE>> {
@@ -600,6 +638,14 @@ impl<P, U> Builder<'_, P, U> {
             ));
         }
 
+        if self.orchard_in_use() && !self.orchard_protocol_matches_version(version) {
+            return Err(Error::TargetIncompatible(
+                self.consensus_branch_id,
+                version,
+                Some(PoolType::ORCHARD),
+            ));
+        }
+
         #[cfg(zcash_unstable = "nu6.3")]
         {
             let ironwood_available =
@@ -626,6 +672,22 @@ impl<P, U> Builder<'_, P, U> {
     /// added after this call.
     pub fn propose_version<FE>(&mut self, version: TxVersion) -> Result<(), Error<FE>> {
         self.check_version_compatibility(version)?;
+        let orchard_protocol = orchard_protocol_for_version(self.consensus_branch_id, version);
+        if !self.orchard_protocol_matches_version(version) {
+            if self.orchard_in_use() {
+                return Err(Error::TargetIncompatible(
+                    self.consensus_branch_id,
+                    version,
+                    Some(PoolType::ORCHARD),
+                ));
+            }
+
+            self.orchard_builder = if self.orchard_builder.is_some() {
+                self.build_config.orchard_builder(orchard_protocol)
+            } else {
+                None
+            };
+        }
         self.tx_version = version;
         self.tx_version_proposed = true;
         Ok(())
@@ -1582,7 +1644,7 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
         let pczt_tx_version = {
             if self.tx_version_proposed {
                 self.tx_version
-            } else if self.ironwood_in_use() {
+            } else if self.ironwood_in_use() || self.orchard_post_nu6_3_in_use() {
                 TxVersion::V6
             } else if matches!(self.tx_version, TxVersion::V6) {
                 TxVersion::V5
@@ -1597,6 +1659,10 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
         self.check_coinbase_expiry_height::<FR::Error>()?;
         #[cfg(zcash_unstable = "nu6.3")]
         debug_assert!(!self.ironwood_in_use() || pczt_tx_version.has_ironwood());
+        #[cfg(zcash_unstable = "nu6.3")]
+        debug_assert!(
+            !self.orchard_post_nu6_3_in_use() || matches!(pczt_tx_version, TxVersion::V6)
+        );
 
         let fee = self.get_fee(fee_rule).map_err(Error::Fee)?;
 
@@ -1925,7 +1991,7 @@ mod tests {
 
     #[test]
     #[cfg(all(feature = "circuits", zcash_unstable = "nu6.3"))]
-    fn nu6_3_standard_builder_preserves_branch_orchard_protocol_for_explicit_v5() {
+    fn nu6_3_standard_builder_uses_legacy_orchard_protocol_for_explicit_v5() {
         let mut builder = Builder::new(
             nu6_3_test_network(),
             zcash_protocol::consensus::BlockHeight::from_u32(10),
@@ -1942,7 +2008,7 @@ mod tests {
 
         assert_eq!(
             builder.orchard_builder.as_ref().map(|b| b.protocol()),
-            Some(orchard::BundleProtocol::OrchardPostNu6_3)
+            Some(orchard::BundleProtocol::OrchardPreNu6_3)
         );
     }
 
@@ -2641,7 +2707,7 @@ mod tests {
         feature = "transparent-inputs",
         zcash_unstable = "nu6.3"
     ))]
-    fn build_for_pczt_uses_v5_for_default_nu6_3_with_orchard_output() {
+    fn build_for_pczt_uses_v6_for_default_nu6_3_with_branch_orchard_output() {
         use ::transparent::keys::NonHardenedChildIndex;
 
         let mut builder = Builder::new(
@@ -2689,7 +2755,7 @@ mod tests {
             .unwrap();
 
         let res = builder.build_for_pczt(OsRng, &ZeroFeeRule).unwrap();
-        assert_eq!(res.pczt_parts.version, TxVersion::V5);
+        assert_eq!(res.pczt_parts.version, TxVersion::V6);
         assert_eq!(
             res.pczt_parts.consensus_branch_id,
             zcash_protocol::consensus::BranchId::Nu6_3
