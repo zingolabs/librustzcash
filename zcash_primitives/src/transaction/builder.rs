@@ -348,6 +348,26 @@ impl BuildConfig {
         }
     }
 
+    /// Returns the Ironwood builder for this configuration.
+    #[cfg(zcash_unstable = "nu6.3")]
+    fn ironwood_builder(&self) -> Option<orchard::builder::Builder> {
+        match self {
+            BuildConfig::Standard {
+                ironwood_anchor, ..
+            } => ironwood_anchor.as_ref().map(|a| {
+                orchard::builder::Builder::new(
+                    orchard::BundleKind::Transaction,
+                    orchard::BundleProtocol::IronwoodPostNu6_3,
+                    *a,
+                )
+            }),
+            BuildConfig::Coinbase { .. } => Some(orchard::builder::Builder::new_coinbase(
+                orchard::BundleProtocol::IronwoodPostNu6_3,
+                orchard::Anchor::empty_tree(),
+            )),
+        }
+    }
+
     /// Returns `true` if this configuration is for building a coinbase transaction.
     pub fn is_coinbase(&self) -> bool {
         matches!(self, BuildConfig::Coinbase { .. })
@@ -2284,14 +2304,8 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(
-        feature = "circuits",
-        feature = "transparent-inputs",
-        zcash_unstable = "nu6.3"
-    ))]
-    fn default_nu6_3_build_rejects_deferred_cross_address_orchard_output() {
-        use ::transparent::keys::NonHardenedChildIndex;
-
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu6.3"))]
+    fn default_nu6_3_add_rejects_cross_address_orchard_output() {
         let recipient = orchard::keys::FullViewingKey::from(
             &orchard::keys::SpendingKey::from_bytes([0; 32]).unwrap(),
         )
@@ -2306,39 +2320,15 @@ mod tests {
             },
         );
 
-        let mut transparent_signing_set = TransparentSigningSet::new();
-        let tsk = AccountPrivKey::from_seed(&TEST_NETWORK, &[0u8; 32], AccountId::ZERO).unwrap();
-        let sk = tsk
-            .derive_external_secret_key(NonHardenedChildIndex::ZERO)
-            .unwrap();
-        let pubkey = transparent_signing_set.add_key(sk);
-        let prev_coin = TxOut::new(
-            Zatoshis::const_from_u64(25000),
-            tsk.to_account_pubkey()
-                .derive_external_ivk()
-                .unwrap()
-                .derive_address(NonHardenedChildIndex::ZERO)
-                .unwrap()
-                .script()
-                .into(),
-        );
-
-        builder
-            .add_transparent_p2pkh_input(pubkey, OutPoint::fake(), prev_coin)
-            .unwrap();
-        builder
-            .add_orchard_output::<Infallible>(
+        assert_matches!(
+            builder.add_orchard_output::<Infallible>(
                 None,
                 recipient,
                 Zatoshis::const_from_u64(10_000),
                 MemoBytes::empty(),
-            )
-            .unwrap();
-
-        assert_matches!(
-            builder.mock_build(&transparent_signing_set, &[], &[], OsRng),
-            Err(Error::OrchardBuild(
-                orchard::builder::BuildError::CrossAddressDisabled
+            ),
+            Err(Error::OrchardRecipient(
+                orchard::builder::OutputError::CrossAddressDisabled
             ))
         );
     }
@@ -2698,12 +2688,13 @@ mod tests {
         builder
             .add_transparent_p2pkh_input(pubkey, OutPoint::fake(), prev_coin)
             .unwrap();
-        let recipient = orchard::keys::FullViewingKey::from(
+        let fvk = orchard::keys::FullViewingKey::from(
             &orchard::keys::SpendingKey::from_bytes([0; 32]).unwrap(),
-        )
-        .address_at(0u32, orchard::keys::Scope::External);
+        );
+        let recipient = fvk.address_at(0u32, orchard::keys::Scope::Internal);
         builder
-            .add_orchard_output::<Infallible>(
+            .add_orchard_change_output::<Infallible>(
+                fvk,
                 None,
                 recipient,
                 Zatoshis::const_from_u64(50000),
@@ -2785,14 +2776,14 @@ mod tests {
     #[cfg(all(feature = "circuits", zcash_unstable = "nu6.3"))]
     fn ironwood_change_marks_ironwood_in_use() {
         let mut builder = Builder::new(
-            Nu63Network,
+            nu6_3_test_network(),
             10u32.into(),
             BuildConfig::Standard {
                 sapling_anchor: None,
                 orchard_anchor: None,
+                ironwood_anchor: Some(orchard::Anchor::empty_tree()),
             },
-        )
-        .with_ironwood_anchor(orchard::Anchor::empty_tree());
+        );
         let fvk = orchard::keys::FullViewingKey::from(
             &orchard::keys::SpendingKey::from_bytes([0; 32]).unwrap(),
         );
