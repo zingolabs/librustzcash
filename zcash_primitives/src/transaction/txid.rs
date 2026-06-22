@@ -512,9 +512,7 @@ pub(crate) fn to_hash(
     h.write_all(
         orchard_digest
             .unwrap_or_else(|| {
-                orchard::commitments::hash_bundle_txid_empty(orchard_commitment_domain(
-                    _txversion,
-                ))
+                orchard::commitments::hash_bundle_txid_empty(orchard_commitment_domain(_txversion))
             })
             .as_bytes(),
     )
@@ -565,9 +563,7 @@ pub(crate) fn to_hash_v6(
     .unwrap();
     h.write_all(
         ironwood_digest
-            .unwrap_or_else(|| {
-                orchard::commitments::hash_bundle_txid_empty(ironwood_v6_domain())
-            })
+            .unwrap_or_else(|| orchard::commitments::hash_bundle_txid_empty(ironwood_v6_domain()))
             .as_bytes(),
     )
     .unwrap();
@@ -709,11 +705,7 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
         orchard_bundle: Option<&orchard::Bundle<orchard::Authorized, ZatBalance>>,
     ) -> Self::OrchardDigest {
         orchard_bundle.map_or_else(
-            || {
-                orchard::commitments::hash_bundle_auth_empty(orchard_commitment_domain(
-                    version,
-                ))
-            },
+            || orchard::commitments::hash_bundle_auth_empty(orchard_commitment_domain(version)),
             |b| {
                 b.authorizing_commitment(orchard_commitment_domain(version))
                     .0
