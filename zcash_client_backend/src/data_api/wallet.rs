@@ -1842,8 +1842,11 @@ where
     );
 
     let txid: [u8; 32] = build_result.transaction().txid().into();
+    // An OP_RETURN output (if present) is added to the transaction's transparent bundle but does
+    // not have an entry in `transparent_output_meta` because it is not a value-bearing recipient.
+    let op_return_count = usize::from(proposal_step.op_return_data().is_some());
     assert_eq!(
-        build_state.transparent_output_meta.len(),
+        build_state.transparent_output_meta.len() + op_return_count,
         build_result
             .transaction()
             .transparent_bundle()
