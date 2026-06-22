@@ -633,6 +633,7 @@ pub fn propose_transfer<DbT, ParamsT, InputsT, ChangeT, CommitmentTreeErrT>(
     change_strategy: &ChangeT,
     request: zip321::TransactionRequest,
     confirmations_policy: ConfirmationsPolicy,
+    op_return_data: Option<Vec<u8>>,
     #[cfg(feature = "unstable")] proposed_version: Option<TxVersion>,
 ) -> Result<
     Proposal<ChangeT::FeeRule, <DbT as InputSource>::NoteRef>,
@@ -664,6 +665,7 @@ where
         spend_from_account,
         request,
         change_strategy,
+        op_return_data,
         #[cfg(feature = "unstable")]
         proposed_version,
     )?;
@@ -755,6 +757,7 @@ where
         &change_strategy,
         request,
         confirmations_policy,
+        None, // op_return_data: standard transfer does not support OP_RETURN
         #[cfg(feature = "unstable")]
         proposed_version,
     )

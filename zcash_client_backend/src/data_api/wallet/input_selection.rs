@@ -202,6 +202,7 @@ pub trait InputSelector {
         account: <Self::InputSource as InputSource>::AccountId,
         transaction_request: TransactionRequest,
         change_strategy: &ChangeT,
+        op_return_data: Option<Vec<u8>>,
         #[cfg(feature = "unstable")] proposed_version: Option<TxVersion>,
     ) -> Result<
         Proposal<<ChangeT as ChangeStrategy>::FeeRule, <Self::InputSource as InputSource>::NoteRef>,
@@ -398,6 +399,7 @@ impl<DbT: InputSource> InputSelector for GreedyInputSelector<DbT> {
         account: <DbT as InputSource>::AccountId,
         transaction_request: TransactionRequest,
         change_strategy: &ChangeT,
+        op_return_data: Option<Vec<u8>>,
         #[cfg(feature = "unstable")] proposed_version: Option<TxVersion>,
     ) -> Result<
         Proposal<<ChangeT as ChangeStrategy>::FeeRule, DbT::NoteRef>,
@@ -516,6 +518,16 @@ impl<DbT: InputSource> InputSelector for GreedyInputSelector<DbT> {
                     ));
                 }
             }
+        }
+
+        // If an `OP_RETURN` payload was requested, include a zero-value null-data output in the
+        // transparent outputs used for fee/balance calculation. This ensures the input selector
+        // reserves enough fee budget for the extra output size (ZIP-317 logical action) when the
+        // transaction is built later.
+        if let Some(ref data) = op_return_data {
+            let txout = transparent::builder::null_data_txout(data)
+                .map_err(|_| InputSelectorError::Proposal(ProposalError::Overflow))?;
+            transparent_outputs.push(txout);
         }
 
         let mut shielded_inputs = ReceivedNotes::empty();
@@ -683,6 +695,7 @@ impl<DbT: InputSource> InputSelector for GreedyInputSelector<DbT> {
                                 tr1_payment_pools,
                             },
                         ),
+                        op_return_data,
                     )
                     .map_err(InputSelectorError::Proposal);
                 }
@@ -960,6 +973,7 @@ where
                 tr1_payments: vec![payment],
                 tr1_payment_pools: BTreeMap::from_iter([(0, PoolType::Transparent)]),
             }),
+        None, // op_return_data: send-all does not currently support OP_RETURN
     )
     .map_err(InputSelectorError::Proposal)
 }
@@ -980,6 +994,7 @@ fn build_proposal<FeeRuleT: FeeRule + Clone, NoteRef>(
     transaction_request: TransactionRequest,
     payment_pools: BTreeMap<usize, PoolType>,
     #[cfg(feature = "transparent-inputs")] ephemeral_step_opt: Option<EphemeralStepConfig>,
+    op_return_data: Option<Vec<u8>>,
 ) -> Result<Proposal<FeeRuleT, NoteRef>, ProposalError> {
     #[cfg(feature = "transparent-inputs")]
     if let Some(ephemeral_step) = ephemeral_step_opt {
@@ -1044,14 +1059,18 @@ fn build_proposal<FeeRuleT: FeeRule + Clone, NoteRef>(
             false,
         )?);
 
-        return Proposal::multi_step(
+        let proposal = Proposal::multi_step(
             fee_rule.clone(),
             target_height,
             NonEmpty::from_vec(steps).expect("steps is known to be nonempty"),
-        );
+        )?;
+        return Ok(match op_return_data {
+            Some(data) => proposal.with_op_return_data(data),
+            None => proposal,
+        });
     }
 
-    Proposal::single_step(
+    let proposal = Proposal::single_step(
         transaction_request,
         payment_pools,
         vec![],
@@ -1060,7 +1079,11 @@ fn build_proposal<FeeRuleT: FeeRule + Clone, NoteRef>(
         fee_rule.clone(),
         target_height,
         false,
-    )
+    )?;
+    Ok(match op_return_data {
+        Some(data) => proposal.with_op_return_data(data),
+        None => proposal,
+    })
 }
 
 #[cfg(feature = "transparent-inputs")]

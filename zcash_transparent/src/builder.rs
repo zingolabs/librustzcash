@@ -555,23 +555,33 @@ impl TransparentBuilder {
 
     /// Adds a zero-value "null data" (OP_RETURN) output containing the given data.
     pub fn add_null_data_output(&mut self, data: &[u8]) -> Result<(), Error> {
-        // Check 80 bytes limit.
-        const MAX_OP_RETURN_RELAY_BYTES: usize = 80;
-        if data.len() > MAX_OP_RETURN_RELAY_BYTES {
-            return Err(Error::NullDataTooLong {
-                actual: data.len(),
-                limit: MAX_OP_RETURN_RELAY_BYTES,
-            });
-        }
-
-        let script = script::Component(vec![
-            op::RETURN,
-            op::push_value(data).expect("length checked"),
-        ]);
-
-        self.vout.push(TxOut::new(Zatoshis::ZERO, script.into()));
+        let txout = null_data_txout(data)?;
+        self.vout.push(txout);
         Ok(())
     }
+}
+
+/// Constructs a zero-value "null data" (OP_RETURN) [`TxOut`] containing the given data.
+///
+/// This is useful for callers that need a standalone `TxOut` representation of an `OP_RETURN`
+/// output (for example, to include it in fee/balance calculations before building a transaction).
+/// Builder users should prefer [`TransparentBuilder::add_null_data_output`].
+pub fn null_data_txout(data: &[u8]) -> Result<TxOut, Error> {
+    // Check 80 bytes limit (Bitcoin/Zcash standard relay rule).
+    const MAX_OP_RETURN_RELAY_BYTES: usize = 80;
+    if data.len() > MAX_OP_RETURN_RELAY_BYTES {
+        return Err(Error::NullDataTooLong {
+            actual: data.len(),
+            limit: MAX_OP_RETURN_RELAY_BYTES,
+        });
+    }
+
+    let script = script::Component(vec![
+        op::RETURN,
+        op::push_value(data).expect("length checked"),
+    ]);
+
+    Ok(TxOut::new(Zatoshis::ZERO, script.into()))
 }
 
 impl TxIn<Unauthorized> {
