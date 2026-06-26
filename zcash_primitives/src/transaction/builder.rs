@@ -318,14 +318,17 @@ impl BuildConfig {
     /// Returns the Orchard builder for this configuration.
     fn orchard_builder(
         &self,
-        protocol: orchard::BundleProtocol,
+        protocol: orchard::bundle::BundlePoolRestrictions,
     ) -> Option<orchard::builder::Builder> {
         match self {
             BuildConfig::Standard { orchard_anchor, .. } => orchard_anchor.as_ref().map(|a| {
                 orchard::builder::Builder::new(protocol, orchard::builder::BundleType::DEFAULT, *a)
             }),
             BuildConfig::Coinbase { .. }
-                if matches!(protocol, orchard::BundleProtocol::OrchardPostNu6_3) =>
+                if matches!(
+                    protocol,
+                    orchard::bundle::BundlePoolRestrictions::OrchardNu6_3Onward
+                ) =>
             {
                 None
             }
@@ -345,13 +348,13 @@ impl BuildConfig {
                 ironwood_anchor, ..
             } => ironwood_anchor.as_ref().map(|a| {
                 orchard::builder::Builder::new(
-                    orchard::BundleProtocol::IronwoodPostNu6_3,
+                    orchard::bundle::BundlePoolRestrictions::IronwoodNu6_3Onward,
                     orchard::builder::BundleType::DEFAULT,
                     *a,
                 )
             }),
             BuildConfig::Coinbase { .. } => Some(orchard::builder::Builder::new(
-                orchard::BundleProtocol::IronwoodPostNu6_3,
+                orchard::bundle::BundlePoolRestrictions::IronwoodNu6_3Onward,
                 orchard::builder::BundleType::Coinbase,
                 orchard::Anchor::empty_tree(),
             )),
@@ -367,6 +370,7 @@ impl BuildConfig {
 fn orchard_action_count(
     builder: &orchard::builder::Builder,
     is_coinbase: bool,
+    pool_restrictions: orchard::bundle::BundlePoolRestrictions,
 ) -> Result<usize, &'static str> {
     let num_spends = builder.spends().len();
     let num_outputs = builder
@@ -381,35 +385,19 @@ fn orchard_action_count(
         orchard::builder::BundleType::DEFAULT
     };
 
-    bundle_type.num_actions(num_spends, num_outputs, builder.protocol())
+    bundle_type.num_actions(num_spends, num_outputs, pool_restrictions)
 }
 
-fn orchard_protocol_for_branch(consensus_branch_id: BranchId) -> orchard::BundleProtocol {
+pub(crate) fn orchard_protocol_for_branch(
+    consensus_branch_id: BranchId,
+) -> orchard::bundle::BundlePoolRestrictions {
     match consensus_branch_id {
         #[cfg(zcash_unstable = "nu6.3")]
-        BranchId::Nu6_3 => orchard::BundleProtocol::OrchardPostNu6_3,
+        BranchId::Nu6_3 => orchard::bundle::BundlePoolRestrictions::OrchardNu6_3Onward,
         #[cfg(zcash_unstable = "nu7")]
-        BranchId::Nu7 => orchard::BundleProtocol::OrchardPostNu6_3,
-        BranchId::Nu6_2 => orchard::BundleProtocol::OrchardPreNu6_3,
-        _ => orchard::BundleProtocol::OrchardPreNu6_2,
-    }
-}
-
-fn orchard_protocol_for_version(
-    consensus_branch_id: BranchId,
-    tx_version: TxVersion,
-) -> orchard::BundleProtocol {
-    match tx_version {
-        TxVersion::V5 => match consensus_branch_id {
-            #[cfg(zcash_unstable = "nu6.3")]
-            BranchId::Nu6_3 => orchard::BundleProtocol::OrchardPreNu6_3,
-            #[cfg(zcash_unstable = "nu7")]
-            BranchId::Nu7 => orchard::BundleProtocol::OrchardPreNu6_3,
-            #[cfg(zcash_unstable = "zfuture")]
-            BranchId::ZFuture => orchard::BundleProtocol::OrchardPreNu6_3,
-            _ => orchard_protocol_for_branch(consensus_branch_id),
-        },
-        _ => orchard_protocol_for_branch(consensus_branch_id),
+        BranchId::Nu7 => orchard::bundle::BundlePoolRestrictions::OrchardNu6_3Onward,
+        BranchId::Nu6_2 => orchard::bundle::BundlePoolRestrictions::OrchardNu6_2Only,
+        _ => orchard::bundle::BundlePoolRestrictions::OrchardPreNu6_2,
     }
 }
 
@@ -505,6 +493,7 @@ pub struct Builder<'a, P, U> {
     transparent_builder: TransparentBuilder,
     sapling_builder: Option<sapling::builder::Builder>,
     orchard_builder: Option<orchard::builder::Builder>,
+    orchard_pool_restrictions: Option<orchard::bundle::BundlePoolRestrictions>,
     #[cfg(zcash_unstable = "nu6.3")]
     ironwood_builder: Option<orchard::builder::Builder>,
     #[cfg(zcash_unstable = "zfuture")]
@@ -582,24 +571,18 @@ impl<P, U> Builder<'_, P, U> {
         })
     }
 
+    #[cfg(zcash_unstable = "nu6.3")]
     fn orchard_in_use(&self) -> bool {
         self.orchard_builder.as_ref().is_some_and(|b| {
             !b.spends().is_empty() || !b.outputs().is_empty() || !b.changes().is_empty()
         })
     }
 
-    fn orchard_protocol_matches_version(&self, version: TxVersion) -> bool {
-        self.orchard_builder.as_ref().is_none_or(|b| {
-            b.protocol() == orchard_protocol_for_version(self.consensus_branch_id, version)
-        })
-    }
-
     #[cfg(zcash_unstable = "nu6.3")]
     fn orchard_post_nu6_3_in_use(&self) -> bool {
-        self.orchard_builder.as_ref().is_some_and(|b| {
-            b.protocol() == orchard::BundleProtocol::OrchardPostNu6_3
-                && (!b.spends().is_empty() || !b.outputs().is_empty() || !b.changes().is_empty())
-        })
+        self.orchard_pool_restrictions
+            == Some(orchard::bundle::BundlePoolRestrictions::OrchardNu6_3Onward)
+            && self.orchard_in_use()
     }
 
     /// Checks that the given version supports all features required by the inputs and
@@ -638,14 +621,6 @@ impl<P, U> Builder<'_, P, U> {
             ));
         }
 
-        if self.orchard_in_use() && !self.orchard_protocol_matches_version(version) {
-            return Err(Error::TargetIncompatible(
-                self.consensus_branch_id,
-                version,
-                Some(PoolType::ORCHARD),
-            ));
-        }
-
         #[cfg(zcash_unstable = "nu6.3")]
         {
             let ironwood_available =
@@ -672,22 +647,6 @@ impl<P, U> Builder<'_, P, U> {
     /// added after this call.
     pub fn propose_version<FE>(&mut self, version: TxVersion) -> Result<(), Error<FE>> {
         self.check_version_compatibility(version)?;
-        let orchard_protocol = orchard_protocol_for_version(self.consensus_branch_id, version);
-        if !self.orchard_protocol_matches_version(version) {
-            if self.orchard_in_use() {
-                return Err(Error::TargetIncompatible(
-                    self.consensus_branch_id,
-                    version,
-                    Some(PoolType::ORCHARD),
-                ));
-            }
-
-            self.orchard_builder = if self.orchard_builder.is_some() {
-                self.build_config.orchard_builder(orchard_protocol)
-            } else {
-                None
-            };
-        }
         self.tx_version = version;
         self.tx_version_proposed = true;
         Ok(())
@@ -712,6 +671,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         } else {
             None
         };
+        let orchard_pool_restrictions = orchard_builder.as_ref().map(|_| orchard_protocol);
 
         #[cfg(zcash_unstable = "nu6.3")]
         let ironwood_builder = if params.is_nu_active(NetworkUpgrade::Nu6_3, target_height) {
@@ -764,6 +724,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
             transparent_builder: TransparentBuilder::empty(),
             sapling_builder,
             orchard_builder,
+            orchard_pool_restrictions,
             #[cfg(zcash_unstable = "nu6.3")]
             ironwood_builder,
             #[cfg(zcash_unstable = "zfuture")]
@@ -801,6 +762,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
             transparent_builder: self.transparent_builder,
             sapling_builder: self.sapling_builder,
             orchard_builder: self.orchard_builder,
+            orchard_pool_restrictions: self.orchard_pool_restrictions,
             #[cfg(zcash_unstable = "nu6.3")]
             ironwood_builder: self.ironwood_builder,
             tze_builder: self.tze_builder,
@@ -1105,16 +1067,31 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
         let orchard_actions = self
             .orchard_builder
             .as_ref()
-            .map_or(Ok(0), |builder| orchard_action_count(builder, is_coinbase))
+            .map_or(Ok(0), |builder| {
+                orchard_action_count(
+                    builder,
+                    is_coinbase,
+                    self.orchard_pool_restrictions
+                        .expect("orchard builder present implies pool restrictions"),
+                )
+            })
             .map_err(FeeError::Bundle)?;
 
         #[cfg(zcash_unstable = "nu6.3")]
-        let orchard_actions = orchard_actions
-            + self
-                .ironwood_builder
-                .as_ref()
-                .map_or(Ok(0), |builder| orchard_action_count(builder, is_coinbase))
-                .map_err(FeeError::Bundle)?;
+        let ironwood_actions = self
+            .ironwood_builder
+            .as_ref()
+            .map_or(Ok(0), |builder| {
+                orchard_action_count(
+                    builder,
+                    is_coinbase,
+                    orchard::bundle::BundlePoolRestrictions::IronwoodNu6_3Onward,
+                )
+            })
+            .map_err(FeeError::Bundle)?;
+
+        #[cfg(zcash_unstable = "nu6.3")]
+        let orchard_actions = orchard_actions + ironwood_actions;
 
         fee_rule
             .fee_required(
@@ -1160,16 +1137,31 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
         let orchard_actions = self
             .orchard_builder
             .as_ref()
-            .map_or(Ok(0), |builder| orchard_action_count(builder, is_coinbase))
+            .map_or(Ok(0), |builder| {
+                orchard_action_count(
+                    builder,
+                    is_coinbase,
+                    self.orchard_pool_restrictions
+                        .expect("orchard builder present implies pool restrictions"),
+                )
+            })
             .map_err(FeeError::Bundle)?;
 
         #[cfg(zcash_unstable = "nu6.3")]
-        let orchard_actions = orchard_actions
-            + self
-                .ironwood_builder
-                .as_ref()
-                .map_or(Ok(0), |builder| orchard_action_count(builder, is_coinbase))
-                .map_err(FeeError::Bundle)?;
+        let ironwood_actions = self
+            .ironwood_builder
+            .as_ref()
+            .map_or(Ok(0), |builder| {
+                orchard_action_count(
+                    builder,
+                    is_coinbase,
+                    orchard::bundle::BundlePoolRestrictions::IronwoodNu6_3Onward,
+                )
+            })
+            .map_err(FeeError::Bundle)?;
+
+        #[cfg(zcash_unstable = "nu6.3")]
+        let orchard_actions = orchard_actions + ironwood_actions;
 
         fee_rule
             .fee_required_zfuture(
@@ -1659,10 +1651,11 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
         self.check_coinbase_expiry_height::<FR::Error>()?;
         #[cfg(zcash_unstable = "nu6.3")]
         debug_assert!(!self.ironwood_in_use() || pczt_tx_version.has_ironwood());
-        #[cfg(zcash_unstable = "nu6.3")]
-        debug_assert!(
-            !self.orchard_post_nu6_3_in_use() || matches!(pczt_tx_version, TxVersion::V6)
-        );
+        // Per ZIP 229, the NU6.3 Orchard cross-address restriction is keyed on the
+        // consensus branch, not the transaction version, so a v5 transaction can
+        // legitimately carry a post-NU6.3 Orchard bundle (with the cross-address flag
+        // bit reserved/clear). There is therefore no Orchard-specific tx-version
+        // invariant to assert here.
 
         let fee = self.get_fee(fee_rule).map_err(Error::Fee)?;
 
@@ -1984,14 +1977,14 @@ mod tests {
 
         assert_eq!(builder.tx_version, TxVersion::V6);
         assert_eq!(
-            builder.orchard_builder.as_ref().map(|b| b.protocol()),
-            Some(orchard::BundleProtocol::OrchardPostNu6_3)
+            builder.orchard_pool_restrictions,
+            Some(orchard::bundle::BundlePoolRestrictions::OrchardNu6_3Onward)
         );
     }
 
     #[test]
     #[cfg(all(feature = "circuits", zcash_unstable = "nu6.3"))]
-    fn nu6_3_standard_builder_uses_legacy_orchard_protocol_for_explicit_v5() {
+    fn nu6_3_standard_builder_uses_nu6_3_orchard_protocol_for_explicit_v5() {
         let mut builder = Builder::new(
             nu6_3_test_network(),
             zcash_protocol::consensus::BlockHeight::from_u32(10),
@@ -2006,9 +1999,12 @@ mod tests {
             .propose_version::<Infallible>(TxVersion::V5)
             .unwrap();
 
+        // Per ZIP 229 the NU6.3 Orchard cross-address restriction cannot be
+        // bypassed with a v5 transaction: the pool restriction is selected by
+        // consensus branch, not transaction version.
         assert_eq!(
-            builder.orchard_builder.as_ref().map(|b| b.protocol()),
-            Some(orchard::BundleProtocol::OrchardPreNu6_3)
+            builder.orchard_pool_restrictions,
+            Some(orchard::bundle::BundlePoolRestrictions::OrchardNu6_3Onward)
         );
     }
 
@@ -2023,8 +2019,11 @@ mod tests {
 
         assert!(builder.orchard_builder.is_none());
         assert_eq!(
-            builder.ironwood_builder.as_ref().map(|b| b.protocol()),
-            Some(orchard::BundleProtocol::IronwoodPostNu6_3)
+            builder
+                .ironwood_builder
+                .as_ref()
+                .map(|_| orchard::bundle::BundlePoolRestrictions::IronwoodNu6_3Onward),
+            Some(orchard::bundle::BundlePoolRestrictions::IronwoodNu6_3Onward)
         );
     }
 
@@ -2048,7 +2047,7 @@ mod tests {
         );
         let recipient = fvk.address_at(0u32, orchard::keys::Scope::Internal);
         let mut builder = orchard::builder::Builder::new(
-            orchard::BundleProtocol::OrchardPostNu6_3,
+            orchard::bundle::BundlePoolRestrictions::OrchardNu6_3Onward,
             orchard::builder::BundleType::DEFAULT,
             orchard::Anchor::empty_tree(),
         );
@@ -2063,7 +2062,15 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(super::orchard_action_count(&builder, false).unwrap(), 2);
+        assert_eq!(
+            super::orchard_action_count(
+                &builder,
+                false,
+                orchard::bundle::BundlePoolRestrictions::OrchardNu6_3Onward
+            )
+            .unwrap(),
+            2
+        );
     }
 
     // This test only works with the transparent_inputs feature because we have to
@@ -2102,6 +2109,7 @@ mod tests {
             transparent_builder: TransparentBuilder::empty(),
             sapling_builder: None,
             orchard_builder: None,
+            orchard_pool_restrictions: None,
             #[cfg(zcash_unstable = "nu6.3")]
             ironwood_builder: None,
             #[cfg(zcash_unstable = "zfuture")]
@@ -2306,7 +2314,12 @@ mod tests {
             Some(1)
         );
         assert_eq!(
-            orchard_action_count(builder.ironwood_builder.as_ref().unwrap(), true).unwrap(),
+            orchard_action_count(
+                builder.ironwood_builder.as_ref().unwrap(),
+                true,
+                orchard::bundle::BundlePoolRestrictions::IronwoodNu6_3Onward
+            )
+            .unwrap(),
             1
         );
     }

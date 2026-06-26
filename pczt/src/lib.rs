@@ -41,9 +41,17 @@ use zcash_protocol::value::Zatoshis;
 use {
     common::{Global, determine_lock_time},
     zcash_primitives::transaction::{Authorization, TransactionData, TxVersion},
-    zcash_protocol::consensus::BranchId,
     zcash_protocol::constants::{V5_TX_VERSION, V5_VERSION_GROUP_ID},
 };
+// `BranchId` selects the Orchard pool restriction per ZIP 229, which is compiled
+// whenever the `orchard` feature is enabled, independent of the transaction roles.
+#[cfg(any(
+    feature = "orchard",
+    feature = "io-finalizer",
+    feature = "signer",
+    feature = "tx-extractor"
+))]
+use zcash_protocol::consensus::BranchId;
 
 #[cfg(all(
     any(feature = "io-finalizer", feature = "signer"),
@@ -70,22 +78,31 @@ const PCZT_VERSION_1: u32 = 1;
 const PCZT_VERSION_2: u32 = 2;
 
 #[cfg(feature = "orchard")]
-pub(crate) fn orchard_bundle_format(_global: &common::Global) -> ::orchard::bundle::BundleFormat {
-    #[cfg(zcash_unstable = "nu6.3")]
-    {
-        if _global.tx_version == zcash_protocol::constants::V6_TX_VERSION
-            && _global.version_group_id == zcash_protocol::constants::V6_VERSION_GROUP_ID
-        {
-            ::orchard::bundle::BundleFormat::Nu6_3
-        } else {
-            ::orchard::bundle::BundleFormat::PreNu6_3
-        }
+/// The Orchard pool restriction implied by a consensus branch, per ZIP 229: the
+/// restriction (and therefore the cross-address rule and circuit) is selected by
+/// `(pool, consensus branch)`, not by the transaction version. Mirrors
+/// `zcash_primitives::transaction::builder::orchard_protocol_for_branch`.
+pub(crate) fn orchard_pool_restrictions_for_branch(
+    consensus_branch_id: BranchId,
+) -> ::orchard::bundle::BundlePoolRestrictions {
+    use ::orchard::bundle::BundlePoolRestrictions;
+    match consensus_branch_id {
+        #[cfg(zcash_unstable = "nu6.3")]
+        BranchId::Nu6_3 => BundlePoolRestrictions::OrchardNu6_3Onward,
+        #[cfg(zcash_unstable = "nu7")]
+        BranchId::Nu7 => BundlePoolRestrictions::OrchardNu6_3Onward,
+        BranchId::Nu6_2 => BundlePoolRestrictions::OrchardNu6_2Only,
+        _ => BundlePoolRestrictions::OrchardPreNu6_2,
     }
+}
 
-    #[cfg(not(zcash_unstable = "nu6.3"))]
-    {
-        ::orchard::bundle::BundleFormat::PreNu6_3
-    }
+#[cfg(feature = "orchard")]
+pub(crate) fn orchard_bundle_format(
+    global: &common::Global,
+) -> ::orchard::bundle::BundlePoolRestrictions {
+    BranchId::try_from(global.consensus_branch_id)
+        .map(orchard_pool_restrictions_for_branch)
+        .unwrap_or(::orchard::bundle::BundlePoolRestrictions::OrchardPreNu6_2)
 }
 
 fn postcard_from_exact<'de, T>(bytes: &'de [u8]) -> Result<T, postcard::Error>
@@ -1221,7 +1238,10 @@ mod tests {
         pczt.orchard.anchor = ::orchard::Anchor::empty_tree().to_bytes();
 
         let bundle_format = orchard_bundle_format(&pczt.global);
-        assert_eq!(bundle_format, ::orchard::bundle::BundleFormat::PreNu6_3);
+        assert_eq!(
+            bundle_format,
+            ::orchard::bundle::BundlePoolRestrictions::OrchardPreNu6_2
+        );
 
         let parsed = pczt
             .orchard
@@ -1600,7 +1620,7 @@ mod tests {
         use roles::prover::Prover;
 
         let pk = ::orchard::circuit::ProvingKey::build(
-            ::orchard::BundleProtocol::IronwoodPostNu6_3.circuit_version(),
+            ::orchard::bundle::BundlePoolRestrictions::IronwoodNu6_3Onward.circuit_version(),
         );
         let result = Prover::new(pczt_with_one_v5_ironwood_action()).create_ironwood_proof(&pk);
 
@@ -1646,7 +1666,7 @@ mod tests {
         }
 
         let pk = ::orchard::circuit::ProvingKey::build(
-            ::orchard::BundleProtocol::IronwoodPostNu6_3.circuit_version(),
+            ::orchard::bundle::BundlePoolRestrictions::IronwoodNu6_3Onward.circuit_version(),
         );
         let proof_result = Prover::new(pczt.clone()).create_ironwood_proof(&pk);
         match proof_result {

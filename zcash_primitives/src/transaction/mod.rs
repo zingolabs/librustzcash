@@ -25,7 +25,6 @@ use core::ops::Deref;
 use corez::io::{self, Read, Write};
 
 use ::transparent::bundle::{self as transparent, OutPoint, TxIn, TxOut};
-use orchard::bundle::ProofSizeEnforcement;
 use zcash_encoding::{CompactSize, Vector};
 use zcash_protocol::{
     consensus::{BlockHeight, BranchId},
@@ -491,9 +490,9 @@ impl<A: Authorization> TransactionData<A> {
     /// Both the Orchard and Ironwood bundle fields use [`orchard::Bundle`], but
     /// they are distinct V6 transaction fields with distinct bundle protocols.
     /// The `orchard_bundle` argument must contain a bundle constructed for
-    /// [`orchard::BundleProtocol::OrchardPostNu6_3`], while `ironwood_bundle`
+    /// [`orchard::bundle::BundlePoolRestrictions::OrchardNu6_3Onward`], while `ironwood_bundle`
     /// must contain a bundle constructed for
-    /// [`orchard::BundleProtocol::IronwoodPostNu6_3`]. Supplying a bundle for
+    /// [`orchard::bundle::BundlePoolRestrictions::IronwoodNu6_3Onward`]. Supplying a bundle for
     /// the wrong field is invalid and can be rejected by later serialization or
     /// commitment construction because the bundle flags and domains are protocol
     /// specific.
@@ -1067,27 +1066,8 @@ impl Transaction {
 
         let transparent_bundle = Self::read_transparent(&mut reader)?;
         let sapling_bundle = sapling_serialization::read_v5_bundle(&mut reader)?;
-        let orchard_bundle = orchard_serialization::read_v5_bundle(
-            &mut reader,
-            match consensus_branch_id {
-                BranchId::Sprout
-                | BranchId::Overwinter
-                | BranchId::Sapling
-                | BranchId::Blossom
-                | BranchId::Heartwood
-                | BranchId::Canopy
-                | BranchId::Nu5
-                | BranchId::Nu6
-                | BranchId::Nu6_1 => ProofSizeEnforcement::Unenforced,
-                BranchId::Nu6_2 => ProofSizeEnforcement::Strict,
-                #[cfg(zcash_unstable = "nu6.3")]
-                BranchId::Nu6_3 => ProofSizeEnforcement::Strict,
-                #[cfg(zcash_unstable = "nu7")]
-                BranchId::Nu7 => ProofSizeEnforcement::Strict,
-                #[cfg(zcash_unstable = "zfuture")]
-                BranchId::ZFuture => ProofSizeEnforcement::Strict,
-            },
-        )?;
+        let orchard_bundle =
+            orchard_serialization::read_v5_bundle(&mut reader, consensus_branch_id)?;
 
         let data = TransactionData {
             version,
@@ -1124,7 +1104,7 @@ impl Transaction {
         let sapling_bundle = sapling_serialization::read_v5_bundle(&mut reader)?;
         let orchard_bundle = orchard_serialization::read_v6_bundle(&mut reader)?;
         #[cfg(zcash_unstable = "nu6.3")]
-        let ironwood_bundle = orchard_serialization::read_v6_bundle(&mut reader)?;
+        let ironwood_bundle = orchard_serialization::read_ironwood_v6_bundle(&mut reader)?;
 
         #[cfg(zcash_unstable = "zfuture")]
         let tze_bundle = version
@@ -1303,7 +1283,11 @@ impl Transaction {
         self.write_v5_header(&mut writer)?;
         self.write_transparent(&mut writer)?;
         self.write_v5_sapling(&mut writer)?;
-        orchard_serialization::write_v5_bundle(self.orchard_bundle.as_ref(), &mut writer)?;
+        orchard_serialization::write_v5_bundle(
+            self.orchard_bundle.as_ref(),
+            &mut writer,
+            self.consensus_branch_id,
+        )?;
 
         Ok(())
     }
@@ -1326,7 +1310,10 @@ impl Transaction {
         self.write_v5_sapling(&mut writer)?;
         orchard_serialization::write_v6_bundle(self.orchard_bundle.as_ref(), &mut writer)?;
         #[cfg(zcash_unstable = "nu6.3")]
-        orchard_serialization::write_v6_bundle(self.ironwood_bundle.as_ref(), &mut writer)?;
+        orchard_serialization::write_ironwood_v6_bundle(
+            self.ironwood_bundle.as_ref(),
+            &mut writer,
+        )?;
 
         #[cfg(zcash_unstable = "zfuture")]
         self.write_tze(&mut writer)?;
