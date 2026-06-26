@@ -573,6 +573,7 @@ pub(crate) fn to_hash(
             .unwrap_or_else(|| {
                 let (pool_restrictions, tx_version) = orchard_commitment_domain(_txversion);
                 orchard::commitments::hash_bundle_txid_empty(pool_restrictions, tx_version)
+                    .expect("empty Orchard bundle txid commitment is valid for its tx format")
             })
             .as_bytes(),
     )
@@ -616,6 +617,7 @@ pub(crate) fn to_hash_v6(
             .unwrap_or_else(|| {
                 let (pool_restrictions, tx_version) = orchard_commitment_domain(TxVersion::V6);
                 orchard::commitments::hash_bundle_txid_empty(pool_restrictions, tx_version)
+                    .expect("empty Orchard bundle txid commitment is valid for its tx format")
             })
             .as_bytes(),
     )
@@ -625,6 +627,7 @@ pub(crate) fn to_hash_v6(
             .unwrap_or_else(|| {
                 let (pool_restrictions, tx_version) = ironwood_v6_domain();
                 orchard::commitments::hash_bundle_txid_empty(pool_restrictions, tx_version)
+                    .expect("empty Ironwood bundle txid commitment is valid")
             })
             .as_bytes(),
     )
@@ -768,10 +771,15 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
     ) -> Self::OrchardDigest {
         let (pool_restrictions, tx_version) = orchard_commitment_domain(version);
         orchard_bundle.map_or_else(
-            || orchard::commitments::hash_bundle_auth_empty(pool_restrictions, tx_version),
+            || {
+                orchard::commitments::hash_bundle_auth_empty(pool_restrictions, tx_version)
+                    .expect("empty Orchard bundle auth commitment is valid for its tx format")
+            },
             |b| {
                 let pool_restrictions = orchard_pool_restrictions_for_flags(b.flags());
-                b.authorizing_commitment(pool_restrictions, tx_version).0
+                b.authorizing_commitment(pool_restrictions, tx_version)
+                    .expect("Orchard bundle flags must be representable in their tx format")
+                    .0
             },
         )
     }
@@ -784,8 +792,15 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
     ) -> Self::IronwoodDigest {
         let (pool_restrictions, tx_version) = ironwood_v6_domain();
         ironwood_bundle.map_or_else(
-            || orchard::commitments::hash_bundle_auth_empty(pool_restrictions, tx_version),
-            |b| b.authorizing_commitment(pool_restrictions, tx_version).0,
+            || {
+                orchard::commitments::hash_bundle_auth_empty(pool_restrictions, tx_version)
+                    .expect("empty Ironwood bundle auth commitment is valid")
+            },
+            |b| {
+                b.authorizing_commitment(pool_restrictions, tx_version)
+                    .expect("Ironwood bundle flags must be representable")
+                    .0
+            },
         )
     }
 
