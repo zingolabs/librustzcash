@@ -560,10 +560,30 @@ impl<DbT: InputSource> InputSelector for GreedyInputSelector<DbT> {
         // transparent outputs used for fee/balance calculation. This ensures the input selector
         // reserves enough fee budget for the extra output size (ZIP-317 logical action) when the
         // transaction is built later.
+        //
+        // `Proposal::with_op_return_data` attaches the OP_RETURN to the *last* step of the
+        // resulting proposal. For a single-step proposal that step is the one whose outputs are
+        // tracked by `transparent_outputs`. For a two-step (TEX / `route_via_ephemeral`) proposal
+        // the last step's outputs are tracked by `tr1_transparent_outputs` — accounting the
+        // OP_RETURN against `transparent_outputs` (tr0) in that case over-reserves tr0's fee and
+        // under-reserves tr1's, leaving an unallocated input residue that the transaction
+        // builder later rejects as `ChangeRequired`. Route the OP_RETURN to whichever bucket
+        // matches the step that will actually carry it.
         if let Some(ref data) = op_return_data {
             let txout = transparent::builder::null_data_txout(data)
                 .map_err(|_| InputSelectorError::Proposal(ProposalError::Overflow))?;
-            transparent_outputs.push(txout);
+            #[cfg(feature = "transparent-inputs")]
+            {
+                if tr1_transparent_outputs.is_empty() {
+                    transparent_outputs.push(txout);
+                } else {
+                    tr1_transparent_outputs.push(txout);
+                }
+            }
+            #[cfg(not(feature = "transparent-inputs"))]
+            {
+                transparent_outputs.push(txout);
+            }
         }
 
         let mut shielded_inputs = ReceivedNotes::empty();
