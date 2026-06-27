@@ -634,6 +634,12 @@ pub fn propose_transfer<DbT, ParamsT, InputsT, ChangeT, CommitmentTreeErrT>(
     request: zip321::TransactionRequest,
     confirmations_policy: ConfirmationsPolicy,
     op_return_data: Option<Vec<u8>>,
+    // See `InputSelector::propose_transaction` for a description. When `true`,
+    // transparent recipients are routed through the ZIP-320 ephemeral
+    // indirection (shielded → ephemeral → recipient) so the recipient
+    // observes a wallet-controlled `from_address`. No effect when the
+    // recipient is shielded.
+    #[cfg(feature = "transparent-inputs")] route_via_ephemeral: bool,
     #[cfg(feature = "unstable")] proposed_version: Option<TxVersion>,
 ) -> Result<
     Proposal<ChangeT::FeeRule, <DbT as InputSource>::NoteRef>,
@@ -666,6 +672,8 @@ where
         request,
         change_strategy,
         op_return_data,
+        #[cfg(feature = "transparent-inputs")]
+        route_via_ephemeral,
         #[cfg(feature = "unstable")]
         proposed_version,
     )?;
@@ -758,6 +766,8 @@ where
         request,
         confirmations_policy,
         None, // op_return_data: standard transfer does not support OP_RETURN
+        #[cfg(feature = "transparent-inputs")]
+        false, // route_via_ephemeral: standard transfer is single-hop
         #[cfg(feature = "unstable")]
         proposed_version,
     )

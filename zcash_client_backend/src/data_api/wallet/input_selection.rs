@@ -203,6 +203,15 @@ pub trait InputSelector {
         transaction_request: TransactionRequest,
         change_strategy: &ChangeT,
         op_return_data: Option<Vec<u8>>,
+        // When `true`, transparent recipient addresses (`Address::Transparent`) are
+        // routed through the same ZIP-320 ephemeral indirection that
+        // `Address::Tex` already triggers (shielded → wallet ephemeral t-addr →
+        // recipient). The proposal becomes a two-step multi-transaction proposal.
+        // This is the path callers can use when the recipient (e.g. a Maya/THORChain
+        // vault) needs an observable `from_address` for refunds but the wallet's
+        // funds originate in shielded notes. Has no effect when the recipient is
+        // not transparent.
+        #[cfg(feature = "transparent-inputs")] route_via_ephemeral: bool,
         #[cfg(feature = "unstable")] proposed_version: Option<TxVersion>,
     ) -> Result<
         Proposal<<ChangeT as ChangeStrategy>::FeeRule, <Self::InputSource as InputSource>::NoteRef>,
@@ -400,6 +409,7 @@ impl<DbT: InputSource> InputSelector for GreedyInputSelector<DbT> {
         transaction_request: TransactionRequest,
         change_strategy: &ChangeT,
         op_return_data: Option<Vec<u8>>,
+        #[cfg(feature = "transparent-inputs")] route_via_ephemeral: bool,
         #[cfg(feature = "unstable")] proposed_version: Option<TxVersion>,
     ) -> Result<
         Proposal<<ChangeT as ChangeStrategy>::FeeRule, DbT::NoteRef>,
@@ -458,6 +468,32 @@ impl<DbT: InputSource> InputSelector for GreedyInputSelector<DbT> {
                 .convert_if_network(params.network_type())?;
 
             match recipient_address {
+                // When `route_via_ephemeral` is set, an `Address::Transparent`
+                // destination is routed through the same `tr1_*` ephemeral
+                // indirection that `Address::Tex` triggers below. This produces
+                // a two-step proposal (shielded → wallet ephemeral → final t-addr)
+                // so the final tx exposes the ephemeral as its `from_address`
+                // — required by protocols like Mayachain to populate refund
+                // routing without inflating the memo with a `/REFUNDADDR` clause.
+                #[cfg(feature = "transparent-inputs")]
+                Address::Transparent(addr) if route_via_ephemeral => {
+                    tr1_payment_pools.insert(*idx, PoolType::TRANSPARENT);
+                    tr1_transparent_outputs
+                        .push(TxOut::new(payment_amount, addr.script().into()));
+                    tr1_payments.push(
+                        Payment::new(
+                            payment.recipient_address().clone(),
+                            payment.amount(),
+                            None,
+                            payment.label().cloned(),
+                            payment.message().cloned(),
+                            payment.other_params().to_vec(),
+                        )
+                        .expect("cannot fail because memo is None and amount is nonzero"),
+                    );
+                    total_ephemeral = (total_ephemeral + payment_amount)
+                        .ok_or(GreedyInputSelectorError::Balance(BalanceError::Overflow))?;
+                }
                 Address::Transparent(addr) => {
                     payment_pools.insert(*idx, PoolType::TRANSPARENT);
                     transparent_outputs.push(TxOut::new(payment_amount, addr.script().into()));

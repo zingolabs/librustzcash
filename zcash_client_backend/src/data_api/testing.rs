@@ -972,6 +972,8 @@ where
             request,
             confirmations_policy,
             None,
+            #[cfg(feature = "transparent-inputs")]
+            false,
             #[cfg(feature = "unstable")]
             None,
         )?;
@@ -1016,6 +1018,8 @@ where
             request,
             confirmations_policy,
             None,
+            #[cfg(feature = "transparent-inputs")]
+            false,
             #[cfg(feature = "unstable")]
             None,
         )
