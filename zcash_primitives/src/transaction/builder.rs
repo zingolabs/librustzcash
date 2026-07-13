@@ -64,6 +64,56 @@ use super::components::sapling::zip212_enforcement;
 /// <https://zips.z.cash/zip-0203#changes-for-blossom>
 pub const DEFAULT_TX_EXPIRY_DELTA: u32 = 40;
 
+/// When not equal to [`EXPIRY_OVERRIDE_UNSET`], non-coinbase
+/// [`Builder::new`] uses this value as the expiry height instead of
+/// `target_height + DEFAULT_TX_EXPIRY_DELTA`. Zero is the consensus
+/// no-expiry sentinel: the transaction never expires (ZIP 203).
+///
+/// This seam exists for callers that drive transaction construction
+/// through higher-level orchestration (such as `zcash_client_backend`'s
+/// `create_proposed_transactions`) which exposes no expiry parameter. It
+/// is process-global (the crate builds without `std`, so no thread-local
+/// is available): set it only through [`ExpiryHeightOverrideGuard`], whose
+/// drop clears it, and only around a construction section that is
+/// serialized against other transaction builds — concurrent builders on
+/// other threads would observe the override. It never affects coinbase
+/// transactions, whose expiry height is a consensus rule.
+/// See <https://github.com/zingolabs/zingolib/issues/2455>.
+static EXPIRY_HEIGHT_OVERRIDE: core::sync::atomic::AtomicU64 =
+    core::sync::atomic::AtomicU64::new(EXPIRY_OVERRIDE_UNSET);
+
+const EXPIRY_OVERRIDE_UNSET: u64 = u64::MAX;
+
+fn expiry_height_override() -> Option<u32> {
+    match EXPIRY_HEIGHT_OVERRIDE.load(core::sync::atomic::Ordering::Relaxed) {
+        EXPIRY_OVERRIDE_UNSET => None,
+        height => Some(height as u32),
+    }
+}
+
+/// Sets the expiry-height override for [`Builder::new`] and clears it on
+/// drop. The override is process-global: hold the guard only around a
+/// transaction-construction section that is serialized against other
+/// builds (for example, under a wallet write lock).
+#[must_use = "the override is cleared when the guard drops"]
+#[derive(Debug)]
+pub struct ExpiryHeightOverrideGuard(());
+
+impl ExpiryHeightOverrideGuard {
+    /// Builds transactions with the ZIP 203 no-expiry sentinel
+    /// (`nExpiryHeight = 0`): they never expire.
+    pub fn no_expiry() -> Self {
+        EXPIRY_HEIGHT_OVERRIDE.store(0, core::sync::atomic::Ordering::Relaxed);
+        Self(())
+    }
+}
+
+impl Drop for ExpiryHeightOverrideGuard {
+    fn drop(&mut self) {
+        EXPIRY_HEIGHT_OVERRIDE.store(EXPIRY_OVERRIDE_UNSET, core::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 /// Errors that can occur during fee calculation.
 #[derive(Debug)]
 pub enum FeeError<FE> {
@@ -458,7 +508,8 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     /// # Default values
     ///
     /// The expiry height will be set to the given height plus the default transaction
-    /// expiry delta (20 blocks).
+    /// expiry delta (20 blocks), unless a thread-scoped override is active
+    /// (see [`ExpiryHeightOverrideGuard`]).
     pub fn new(params: P, target_height: BlockHeight, build_config: BuildConfig) -> Self {
         let orchard_builder = if params.is_nu_active(NetworkUpgrade::Nu5, target_height) {
             build_config
@@ -489,6 +540,8 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         // upgrade.
         let expiry_height = if build_config.is_coinbase() {
             target_height
+        } else if let Some(overridden) = expiry_height_override() {
+            overridden.into()
         } else {
             target_height + DEFAULT_TX_EXPIRY_DELTA
         };
