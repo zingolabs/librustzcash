@@ -7862,6 +7862,9 @@ pub fn propose_v5_payment_to_orchard_receiver_is_rejected<Dsf>(
         &change_strategy,
         request,
         ConfirmationsPolicy::MIN,
+        None,
+        #[cfg(feature = "transparent-inputs")]
+        false,
         &SpendPolicy::default(),
         Some(TxVersion::V5),
     );
@@ -8027,6 +8030,9 @@ where
         &change_strategy,
         request,
         ConfirmationsPolicy::MIN,
+        None,
+        #[cfg(feature = "transparent-inputs")]
+        false,
         &SpendPolicy::default(),
         Some(TxVersion::V5),
     )
