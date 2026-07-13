@@ -1150,10 +1150,8 @@ impl UnifiedFullViewingKey {
     pub fn subsumes_ufvk(&self, other: &UnifiedFullViewingKey) -> bool {
         #[cfg(feature = "orchard")]
         match (&other.orchard, &self.orchard) {
-            (Some(e), Some(n)) => {
-                if e != n {
-                    return false;
-                }
+            (Some(e), Some(n)) if e != n => {
+                return false;
             }
             (Some(_), None) => return false,
             _ => {}
@@ -1161,10 +1159,8 @@ impl UnifiedFullViewingKey {
 
         #[cfg(feature = "sapling")]
         match (&other.sapling, &self.sapling) {
-            (Some(e), Some(n)) => {
-                if e != n {
-                    return false;
-                }
+            (Some(e), Some(n)) if e != n => {
+                return false;
             }
             (Some(_), None) => return false,
             _ => {}
@@ -1172,10 +1168,8 @@ impl UnifiedFullViewingKey {
 
         #[cfg(feature = "transparent-inputs")]
         match (&other.transparent, &self.transparent) {
-            (Some(e), Some(n)) => {
-                if e != n {
-                    return false;
-                }
+            (Some(e), Some(n)) if e != n => {
+                return false;
             }
             (Some(_), None) => return false,
             _ => {}
@@ -1555,10 +1549,8 @@ impl UnifiedIncomingViewingKey {
     pub fn subsumes(&self, other: &UnifiedIncomingViewingKey) -> bool {
         #[cfg(feature = "orchard")]
         match (other.orchard(), &self.orchard) {
-            (Some(e), Some(n)) => {
-                if e != n {
-                    return false;
-                }
+            (Some(e), Some(n)) if e != n => {
+                return false;
             }
             (Some(_), None) => return false,
             _ => {}
@@ -1566,10 +1558,8 @@ impl UnifiedIncomingViewingKey {
 
         #[cfg(feature = "sapling")]
         match (other.sapling(), &self.sapling) {
-            (Some(e), Some(n)) => {
-                if e != n {
-                    return false;
-                }
+            (Some(e), Some(n)) if e != n => {
+                return false;
             }
             (Some(_), None) => return false,
             _ => {}
@@ -1577,10 +1567,8 @@ impl UnifiedIncomingViewingKey {
 
         #[cfg(feature = "transparent-inputs")]
         match (other.transparent(), &self.transparent) {
-            (Some(e), Some(n)) => {
-                if e != n {
-                    return false;
-                }
+            (Some(e), Some(n)) if e != n => {
+                return false;
             }
             (Some(_), None) => return false,
             _ => {}
@@ -2442,7 +2430,7 @@ mod tests {
     fn usk_debug_redaction() {
         let seed = [0u8; 64];
         let usk = UnifiedSpendingKey::from_seed(&MAIN_NETWORK, &seed, AccountId::ZERO).unwrap();
-        assert!(format!("{:?}", usk).contains("\"...\""));
+        assert!(format!("{usk:?}").contains("\"...\""));
     }
 
     #[test]
@@ -2478,7 +2466,7 @@ mod tests {
         )
         .unwrap();
 
-        let debug_str = format!("{:?}", ufvk);
+        let debug_str = format!("{ufvk:?}");
         #[cfg(feature = "transparent-inputs")]
         assert!(debug_str.contains("transparent: Some(\"...\")"));
         #[cfg(feature = "sapling")]
@@ -2519,7 +2507,7 @@ mod tests {
             orchard,
         );
 
-        let debug_str = format!("{:?}", uivk);
+        let debug_str = format!("{uivk:?}");
         #[cfg(feature = "sapling")]
         assert!(debug_str.contains("sapling: Some(\"...\")"));
         #[cfg(feature = "orchard")]
